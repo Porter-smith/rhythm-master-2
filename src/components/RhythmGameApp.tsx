@@ -227,6 +227,20 @@ export const RhythmGameApp: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 overflow-hidden">
+      {/* Bolt.new Badge */}
+      <a 
+        href="https://bolt.new"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed top-4 right-4 z-50 transition-transform hover:scale-105"
+      >
+        <img 
+          src="/assets/badges/bolt.png" 
+          alt="Powered by Bolt.new" 
+          className="w-16 h-16"
+        />
+      </a>
+
       {/* Animated background */}
       <div className="absolute inset-0 opacity-20">
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-r from-transparent via-white to-transparent transform -skew-x-12 animate-pulse"></div>
