@@ -170,6 +170,24 @@ export const midiSongs: MidiSong[] = [
       medium: [],
       hard: []
     }
+  },
+  {
+    id: 'dooms-gate-midi',
+    title: 'Doom\'s Gate (MIDI)',
+    artist: 'Traditional',
+    duration: '1:15',
+    difficulties: ['easy'],
+    bpm: 140,
+    format: 'midi',
+    midiFiles: {
+      easy: '/midi/dooms-gate-easy.mid'
+    },
+    audioFiles: {
+      easy: '/audio/dooms-gate-easy.mp3'
+    },
+    notes: {
+      easy: []
+    }
   }
 ];
 
