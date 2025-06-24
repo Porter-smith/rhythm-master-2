@@ -160,6 +160,7 @@ export const midiSongs: MidiSong[] = [
     difficulties: ['easy', 'medium', 'hard'],
     bpm: 120,
     format: 'midi',
+    soundFont: '/soundfonts/gzdoom.sf2',
     midiFiles: {
       easy: '/midi/fur-elise-easy.mid',
       medium: '/midi/fur-elise-medium.mid',
@@ -174,11 +175,12 @@ export const midiSongs: MidiSong[] = [
   {
     id: 'dooms-gate-midi',
     title: 'Doom\'s Gate (MIDI)',
-    artist: 'Traditional',
+    artist: 'Doom',
     duration: '1:15',
     difficulties: ['easy'],
     bpm: 140,
     format: 'midi',
+    soundFont: '/soundfonts/gzdoom.sf2',
     midiFiles: {
       easy: '/midi/dooms-gate-easy.mid'
     },

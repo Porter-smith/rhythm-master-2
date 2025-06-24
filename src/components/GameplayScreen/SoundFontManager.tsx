@@ -2,12 +2,14 @@ import { useState, useCallback, useRef } from 'react';
 import { Soundfont2Sampler, Reverb } from 'smplr';
 import { SoundFont2 } from 'soundfont2';
 import { getAudioContext } from '../../utils/audioContext';
+import { Song } from '../../types/music';
 
 // Available soundfonts - using the working URLs from the POC
 const SOUNDFONTS = {
   'Piano': 'https://smpldsnds.github.io/soundfonts/soundfonts/yamaha-grand-lite.sf2',
   'Electric Piano': 'https://smpldsnds.github.io/soundfonts/soundfonts/galaxy-electric-pianos.sf2',
   'Organ': 'https://smpldsnds.github.io/soundfonts/soundfonts/giga-hq-fm-gm.sf2',
+  'GZDoom': '/soundfonts/gzdoom.sf2',  // Local GZDoom sound font
 };
 
 // Global reverb instance to prevent recreation (exactly like the POC)
@@ -65,8 +67,14 @@ export const useSoundFontManager = () => {
       // Create global reverb if not exists (exactly like POC)
       reverb ??= new Reverb(context);
 
-      // Get soundfont URL
-      const url = SOUNDFONTS[soundfontName as keyof typeof SOUNDFONTS];
+      // Get soundfont URL - handle both named soundfonts and custom URLs
+      let url: string;
+      if (SOUNDFONTS[soundfontName as keyof typeof SOUNDFONTS]) {
+        url = SOUNDFONTS[soundfontName as keyof typeof SOUNDFONTS];
+      } else {
+        // Assume it's a custom URL/path
+        url = soundfontName;
+      }
       console.log(`📂 Soundfont URL: ${url}`);
 
       // Create new sampler with the exact configuration from POC
@@ -88,6 +96,7 @@ export const useSoundFontManager = () => {
       // Get available instruments
       const instruments = loadedSampler.instrumentNames || [];
       console.log(`🎵 Available instruments:`, instruments);
+      console.log(`🎵 Total instruments available: ${instruments.length}`);
 
       // Load the first instrument
       if (instruments.length > 0) {
@@ -95,6 +104,19 @@ export const useSoundFontManager = () => {
         console.log(`🎹 Loading instrument: ${firstInstrument}`);
         await loadedSampler.loadInstrument(firstInstrument);
         console.log(`✅ Instrument loaded: ${firstInstrument}`);
+        
+        // Try to load a few more instruments for better variety
+        const instrumentsToLoad = instruments.slice(0, 5); // Load first 5 instruments
+        for (const instrument of instrumentsToLoad) {
+          try {
+            await loadedSampler.loadInstrument(instrument);
+            console.log(`✅ Additional instrument loaded: ${instrument}`);
+          } catch (err) {
+            console.warn(`⚠️ Failed to load instrument ${instrument}:`, err);
+          }
+        }
+      } else {
+        console.warn(`⚠️ No instruments found in sound font: ${soundfontName}`);
       }
 
       // IMPORTANT: Set state with the loaded sampler and mark as ready
@@ -126,6 +148,28 @@ export const useSoundFontManager = () => {
       return false;
     }
   }, []);
+
+  // Load soundfont for a specific song - uses song's soundFont if available, otherwise defaults
+  const loadSongSoundFont = useCallback(async (song: Song): Promise<boolean> => {
+    try {
+      let soundFontToLoad = 'Piano'; // Default fallback
+
+      if (song.soundFont) {
+        // Use the song's custom sound font
+        soundFontToLoad = song.soundFont;
+        console.log(`🎹 Song has custom sound font: ${song.soundFont}`);
+      } else {
+        console.log(`🎹 No custom sound font for song, using default: ${soundFontToLoad}`);
+      }
+
+      return await loadSoundFont(soundFontToLoad);
+    } catch (err) {
+      console.error('❌ Failed to load song sound font:', err);
+      // Fallback to default piano
+      console.log(`🔄 Falling back to default Piano sound font`);
+      return await loadSoundFont('Piano');
+    }
+  }, [loadSoundFont]);
 
   // Play note using SoundFont - ALWAYS use current state from ref
   const playNote = useCallback((pitch: number, velocity: number = 80, duration: number = 0.5): boolean => {
@@ -175,6 +219,7 @@ export const useSoundFontManager = () => {
   return {
     soundFontState,
     loadSoundFont,
+    loadSongSoundFont,
     playNote
   };
 };

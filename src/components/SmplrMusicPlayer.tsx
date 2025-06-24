@@ -1,24 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Play, Pause, Square, Music, Settings, Volume2, Loader } from 'lucide-react';
+import { ArrowLeft, Play, Square, Music, Settings, Volume2, Loader } from 'lucide-react';
 import { Soundfont2Sampler, Reverb } from 'smplr';
 import { SoundFont2 } from 'soundfont2';
 import { PianoKeyboard } from './PianoKeyboard';
 import { MusicPlayer } from '../music/MusicPlayer';
 import { allSongs, getSongById } from '../data/songs';
-import { Song, PlaybackState, MusicPlayerConfig } from '../types/music';
+import { SOUNDFONTS, getSoundFontForSong, SoundFont } from '../data/soundfonts';
+import { Song, PlaybackState } from '../types/music';
 import { getAudioContext } from '../utils/audioContext';
 
 interface SmplrMusicPlayerProps {
   onBack: () => void;
 }
-
-// Available soundfonts - using the working URLs from the POC
-const SOUNDFONTS = {
-  'Piano': 'https://smpldsnds.github.io/soundfonts/soundfonts/yamaha-grand-lite.sf2',
-  'Electric Piano': 'https://smpldsnds.github.io/soundfonts/soundfonts/galaxy-electric-pianos.sf2',
-  'Organ': 'https://smpldsnds.github.io/soundfonts/soundfonts/giga-hq-fm-gm.sf2',
-  'Supersaw': 'https://smpldsnds.github.io/soundfonts/soundfonts/supersaw-collection.sf2',
-};
 
 type LoadingStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -29,12 +22,13 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
   // Smplr state
   const [sampler, setSampler] = useState<Soundfont2Sampler | undefined>(undefined);
   const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>('idle');
-  const [selectedSoundfont, setSelectedSoundfont] = useState<string>('Piano');
+  const [selectedSoundfont, setSelectedSoundfont] = useState<SoundFont>(SOUNDFONTS['piano-yamaha']);
   const [selectedInstrument, setSelectedInstrument] = useState<string>('');
   const [availableInstruments, setAvailableInstruments] = useState<string[]>([]);
   const [volume, setVolume] = useState(100);
   const [reverbMix, setReverbMix] = useState(0.2);
   const [playingNotes, setPlayingNotes] = useState<Set<number>>(new Set());
+  const [playbackMode, setPlaybackMode] = useState<'midi' | 'instrument'>('midi'); // Default to MIDI mode
 
   // Music player state
   const [musicPlayer] = useState(() => MusicPlayer.getInstance());
@@ -52,6 +46,8 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
 
   // Refs
   const playbackTimerRef = useRef<number | null>(null);
+  const scheduledNotesRef = useRef<Set<number>>(new Set());
+  const isPlayingRef = useRef<boolean>(false);
 
   // Initialize audio context and music player
   useEffect(() => {
@@ -84,9 +80,6 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
       if (sampler) {
         sampler.disconnect();
       }
-      if (reverb) {
-        reverb.disconnect();
-      }
       if (playbackTimerRef.current) {
         clearInterval(playbackTimerRef.current);
       }
@@ -95,12 +88,17 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
   }, [musicPlayer]);
 
   // Load soundfont using the exact working pattern from POC
-  const loadSoundfont = async (soundfontName: string) => {
+  const loadSoundfont = async (soundfontId: string) => {
     setLoadingStatus('loading');
     setError(null);
 
     try {
-      console.log(`🎹 Loading soundfont: ${soundfontName}`);
+      const soundFont = SOUNDFONTS[soundfontId];
+      if (!soundFont) {
+        throw new Error(`Sound font not found: ${soundfontId}`);
+      }
+
+      console.log(`🎹 Loading soundfont: ${soundFont.name} (${soundFont.url})`);
       
       // Disconnect existing sampler
       if (sampler) {
@@ -114,13 +112,9 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
       // Create global reverb if not exists (exactly like POC)
       reverb ??= new Reverb(context);
 
-      // Get soundfont URL
-      const url = SOUNDFONTS[soundfontName as keyof typeof SOUNDFONTS];
-      console.log(`📂 Soundfont URL: ${url}`);
-
       // Create new sampler with the exact configuration from POC
       const newSampler = new Soundfont2Sampler(context, {
-        url: url,
+        url: soundFont.url,
         createSoundfont: (data) => new SoundFont2(data),
       });
 
@@ -144,32 +138,91 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
       // Get available instruments
       const instruments = loadedSampler.instrumentNames || [];
       console.log(`🎵 Available instruments:`, instruments);
+      console.log(`🎵 Total instruments available: ${instruments.length}`);
       
       setAvailableInstruments(instruments);
 
-      // Load the first instrument
+      // Load instruments based on playback mode
       if (instruments.length > 0) {
-        const firstInstrument = instruments[0];
-        console.log(`🎹 Loading instrument: ${firstInstrument}`);
-        await loadedSampler.loadInstrument(firstInstrument);
-        setSelectedInstrument(firstInstrument);
-        console.log(`✅ Instrument loaded: ${firstInstrument}`);
+        if (playbackMode === 'midi') {
+          // For MIDI mode, load all instruments for full MIDI playback
+          console.log(`🎹 MIDI mode: Loading all ${instruments.length} instruments`);
+          
+          // Set up MIDI channel assignments (General MIDI standard)
+          const channelAssignments = [
+            'Acoustic Grand Piano',    // Channel 0
+            'Bright Acoustic Piano',   // Channel 1
+            'Electric Grand Piano',    // Channel 2
+            'Honky-tonk Piano',        // Channel 3
+            'Electric Piano 1',        // Channel 4
+            'Electric Piano 2',        // Channel 5
+            'Harpsichord',             // Channel 6
+            'Clavi',                   // Channel 7
+            'Celesta',                 // Channel 8
+            'Glockenspiel',            // Channel 9
+            'Music Box',               // Channel 10
+            'Vibraphone',              // Channel 11
+            'Marimba',                 // Channel 12
+            'Xylophone',               // Channel 13
+            'Tubular Bells',           // Channel 14
+            'Dulcimer'                 // Channel 15
+          ];
+          
+          for (let i = 0; i < Math.min(instruments.length, 16); i++) {
+            const instrument = instruments[i];
+            try {
+              await loadedSampler.loadInstrument(instrument);
+              console.log(`✅ Instrument loaded for channel ${i}: ${instrument}`);
+              
+              // Set the instrument for this MIDI channel
+              if (loadedSampler.setChannelInstrument) {
+                loadedSampler.setChannelInstrument(i, instrument);
+                console.log(`🎵 Channel ${i} assigned to: ${instrument}`);
+              }
+            } catch (err) {
+              console.warn(`⚠️ Failed to load instrument ${instrument}:`, err);
+            }
+          }
+          setSelectedInstrument('All Instruments (MIDI Mode)');
+        } else {
+          // For instrument mode, load only the first instrument
+          const firstInstrument = instruments[0];
+          console.log(`🎹 Instrument mode: Loading single instrument: ${firstInstrument}`);
+          await loadedSampler.loadInstrument(firstInstrument);
+          setSelectedInstrument(firstInstrument);
+          console.log(`✅ Instrument loaded: ${firstInstrument}`);
+        }
+      } else {
+        console.warn(`⚠️ No instruments found in sound font: ${soundFont.name}`);
       }
 
-      setSelectedSoundfont(soundfontName);
+      setSelectedSoundfont(soundFont);
       setLoadingStatus('ready');
       
-      console.log(`🎉 Successfully loaded soundfont: ${soundfontName}`);
+      console.log(`🎉 Successfully loaded soundfont: ${soundFont.name}`);
     } catch (err) {
       console.error('❌ Failed to load soundfont:', err);
-      setError(`Failed to load ${soundfontName} soundfont: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setError(`Failed to load soundfont: ${err instanceof Error ? err.message : 'Unknown error'}`);
       setLoadingStatus('error');
     }
   };
 
-  // Load different instrument from current soundfont
+  // Switch between MIDI and instrument modes
+  const switchPlaybackMode = async (newMode: 'midi' | 'instrument') => {
+    if (newMode === playbackMode) return;
+    
+    console.log(`🔄 Switching from ${playbackMode} mode to ${newMode} mode`);
+    setPlaybackMode(newMode);
+    
+    // Reload the current sound font with the new mode
+    if (selectedSoundfont) {
+      await loadSoundfont(selectedSoundfont.id);
+    }
+  };
+
+  // Load different instrument from current soundfont (only in instrument mode)
   const loadInstrument = async (instrumentName: string) => {
-    if (!sampler) return;
+    if (!sampler || playbackMode !== 'instrument') return;
 
     try {
       console.log(`🎹 Loading instrument: ${instrumentName}`);
@@ -254,8 +307,17 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
       await musicPlayer.loadSong(song);
       setCurrentSong(song);
       console.log(`🎵 Loaded song: ${song.title}`);
-    } catch (err: any) {
-      setError(`Failed to load song: ${err.message || err}`);
+      
+      // Auto-load the appropriate sound font for this song
+      const songSoundFont = getSoundFontForSong(song);
+      console.log(`🎹 Auto-loading sound font for song: ${songSoundFont.name}`);
+      
+      if (songSoundFont.id !== selectedSoundfont.id) {
+        await loadSoundfont(songSoundFont.id);
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to load song: ${errorMessage}`);
     }
   };
 
@@ -272,32 +334,67 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
         throw new Error(`No notes available for ${selectedDifficulty} difficulty`);
       }
 
-      console.log(`🎮 Playing ${notes.length} notes for ${selectedDifficulty} difficulty`);
+      console.log(`🎮 Playing ${notes.length} notes for ${selectedDifficulty} difficulty in ${playbackMode} mode`);
+
+      // Debug: Show channel distribution for MIDI mode
+      if (playbackMode === 'midi' && notes.length > 0) {
+        const channelStats = new Map<number, number>();
+        notes.forEach(note => {
+          if ('channel' in note && typeof note.channel === 'number') {
+            channelStats.set(note.channel, (channelStats.get(note.channel) || 0) + 1);
+          }
+        });
+        console.log('🎵 MIDI Channel Distribution:', Object.fromEntries(channelStats));
+        console.log('🎵 Channels used:', Array.from(channelStats.keys()).sort((a, b) => a - b));
+      }
+
+      // Set playing state
+      isPlayingRef.current = true;
+      scheduledNotesRef.current.clear();
 
       // Schedule all notes with smplr
       const startTime = sampler.context.currentTime;
       notes.forEach((note, index) => {
+        // Check if we should stop scheduling
+        if (!isPlayingRef.current) return;
+        
         const noteStartTime = startTime + note.time;
+        const noteId = index; // Use index as unique ID
+        
+        scheduledNotesRef.current.add(noteId);
         
         try {
-          sampler.start({
+          // Prepare note parameters
+          const noteParams: any = {
             note: note.pitch,
-            velocity: ('velocity' in note ? note.velocity : 80) || 80,
+            velocity: ('velocity' in note && typeof note.velocity === 'number') ? note.velocity : 80,
             detune: 0,
             time: noteStartTime,
             duration: note.duration
-          });
+          };
+
+          // In MIDI mode, use the note's channel if available
+          if (playbackMode === 'midi' && 'channel' in note && typeof note.channel === 'number') {
+            noteParams.channel = note.channel;
+            console.log(`🎵 Scheduling MIDI note: pitch=${note.pitch}, channel=${note.channel}, time=${note.time}`);
+          } else {
+            console.log(`🎵 Scheduling note: pitch=${note.pitch}, time=${note.time}`);
+          }
+
+          sampler.start(noteParams);
 
           // Visual feedback for playing notes
           setTimeout(() => {
-            setPlayingNotes(prev => new Set(prev).add(note.pitch));
-            setTimeout(() => {
-              setPlayingNotes(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(note.pitch);
-                return newSet;
-              });
-            }, note.duration * 1000);
+            if (isPlayingRef.current) {
+              setPlayingNotes(prev => new Set(prev).add(note.pitch));
+              setTimeout(() => {
+                setPlayingNotes(prev => {
+                  const newSet = new Set(prev);
+                  newSet.delete(note.pitch);
+                  return newSet;
+                });
+              }, note.duration * 1000);
+            }
           }, note.time * 1000);
         } catch (noteErr) {
           console.error(`❌ Failed to schedule note ${index}:`, noteErr);
@@ -315,6 +412,15 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
       // Start playback timer
       const startTimestamp = Date.now();
       playbackTimerRef.current = window.setInterval(() => {
+        if (!isPlayingRef.current) {
+          // Stop timer if playback was stopped
+          if (playbackTimerRef.current) {
+            clearInterval(playbackTimerRef.current);
+            playbackTimerRef.current = null;
+          }
+          return;
+        }
+        
         const elapsed = (Date.now() - startTimestamp) / 1000;
         setPlaybackState(prev => {
           const newState = { ...prev, currentTime: elapsed };
@@ -328,20 +434,34 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
         });
       }, 100);
 
-    } catch (err: any) {
-      setError(`Playback failed: ${err.message || err}`);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Playback failed: ${errorMessage}`);
     }
   };
 
   // Handle stop
   const handleStop = () => {
+    console.log('🛑 Stopping playback...');
+    
+    // Set playing state to false to stop scheduling
+    isPlayingRef.current = false;
+    
+    // Stop all currently playing notes
     stopAllNotes();
     
+    // Clear the playback timer
     if (playbackTimerRef.current) {
       clearInterval(playbackTimerRef.current);
       playbackTimerRef.current = null;
+      console.log('⏱️ Playback timer cleared');
     }
 
+    // Clear scheduled notes
+    scheduledNotesRef.current.clear();
+    console.log('📝 Scheduled notes cleared');
+
+    // Reset playback state
     setPlaybackState(prev => ({
       ...prev,
       isPlaying: false,
@@ -349,7 +469,10 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
       currentTime: 0
     }));
 
+    // Clear playing notes
     setPlayingNotes(new Set());
+    
+    console.log('✅ Playback stopped completely');
   };
 
   // Update volume (exactly like POC)
@@ -433,22 +556,33 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
           </h2>
           
           {/* Soundfont Selection */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            {Object.keys(SOUNDFONTS).map((name) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            {Object.values(SOUNDFONTS).map((soundFont) => (
               <button
-                key={name}
-                onClick={() => loadSoundfont(name)}
+                key={soundFont.id}
+                onClick={() => loadSoundfont(soundFont.id)}
                 disabled={loadingStatus === 'loading'}
                 className={`p-4 rounded-lg border-2 transition-all duration-200 ${
-                  selectedSoundfont === name && loadingStatus === 'ready'
+                  selectedSoundfont.id === soundFont.id && loadingStatus === 'ready'
                     ? 'border-purple-400 bg-purple-500/20'
                     : 'border-white/20 bg-white/5 hover:border-white/40 hover:bg-white/10'
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
-                <div className="text-white font-semibold">{name}</div>
-                <div className="text-white/60 text-sm">
-                  {loadingStatus === 'loading' && selectedSoundfont === name ? 'Loading...' : 
-                   loadingStatus === 'ready' && selectedSoundfont === name ? 'Ready' : 
+                <div className="text-white font-semibold">{soundFont.name}</div>
+                <div className="text-white/60 text-sm mb-2">{soundFont.description}</div>
+                <div className="flex flex-wrap gap-1">
+                  {soundFont.tags.slice(0, 3).map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-2 py-1 bg-white/10 rounded text-xs text-white/70"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                <div className="text-white/50 text-xs mt-2">
+                  {loadingStatus === 'loading' && selectedSoundfont.id === soundFont.id ? 'Loading...' : 
+                   loadingStatus === 'ready' && selectedSoundfont.id === soundFont.id ? 'Ready' : 
                    'Click to load'}
                 </div>
               </button>
@@ -458,19 +592,30 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
           {/* Instrument Selection */}
           {availableInstruments.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-white font-semibold mb-2">Available Instruments:</h3>
-              <select
-                value={selectedInstrument}
-                onChange={(e) => loadInstrument(e.target.value)}
-                className="w-full md:w-auto bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white"
-                disabled={loadingStatus !== 'ready'}
-              >
-                {availableInstruments.map((instrument) => (
-                  <option key={instrument} value={instrument} className="bg-gray-800">
-                    {instrument}
-                  </option>
-                ))}
-              </select>
+              <h3 className="text-white font-semibold mb-2">
+                {playbackMode === 'midi' ? 'MIDI Instruments Loaded:' : 'Select Instrument:'}
+              </h3>
+              {playbackMode === 'midi' ? (
+                <div className="text-white/70 text-sm">
+                  <div className="mb-2">✅ All {availableInstruments.length} instruments loaded for MIDI playback</div>
+                  <div className="text-xs text-white/50">
+                    MIDI files will use their original instrument assignments
+                  </div>
+                </div>
+              ) : (
+                <select
+                  value={selectedInstrument}
+                  onChange={(e) => loadInstrument(e.target.value)}
+                  className="w-full md:w-auto bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white"
+                  disabled={loadingStatus !== 'ready'}
+                >
+                  {availableInstruments.map((instrument) => (
+                    <option key={instrument} value={instrument} className="bg-gray-800">
+                      {instrument}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
 
@@ -517,6 +662,38 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
             </div>
           </div>
 
+          {/* Playback Mode Selection */}
+          <div className="mt-6">
+            <h3 className="text-white font-semibold mb-3">Playback Mode:</h3>
+            <div className="flex space-x-4">
+              <button
+                onClick={() => switchPlaybackMode('midi')}
+                disabled={loadingStatus === 'loading'}
+                className={`px-4 py-2 rounded-lg border-2 transition-all duration-200 ${
+                  playbackMode === 'midi'
+                    ? 'border-blue-400 bg-blue-500/20 text-blue-300'
+                    : 'border-white/20 bg-white/5 text-white/70 hover:border-white/40 hover:bg-white/10'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <div className="font-semibold">🎵 MIDI Mode</div>
+                <div className="text-xs">Play with all instruments</div>
+              </button>
+              
+              <button
+                onClick={() => switchPlaybackMode('instrument')}
+                disabled={loadingStatus === 'loading'}
+                className={`px-4 py-2 rounded-lg border-2 transition-all duration-200 ${
+                  playbackMode === 'instrument'
+                    ? 'border-green-400 bg-green-500/20 text-green-300'
+                    : 'border-white/20 bg-white/5 text-white/70 hover:border-white/40 hover:bg-white/10'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <div className="font-semibold">🎹 Instrument Mode</div>
+                <div className="text-xs">Play with single instrument</div>
+              </button>
+            </div>
+          </div>
+
           {/* Status Indicator */}
           <div className="mt-4 text-center">
             <div className={`inline-flex items-center space-x-2 px-4 py-2 rounded-lg ${
@@ -527,10 +704,27 @@ export const SmplrMusicPlayer: React.FC<SmplrMusicPlayerProps> = ({ onBack }) =>
             }`}>
               {loadingStatus === 'loading' && <Loader className="animate-spin w-4 h-4" />}
               <span className="capitalize font-semibold">{loadingStatus}</span>
-              {loadingStatus === 'ready' && selectedInstrument && (
-                <span className="text-sm">• {selectedInstrument}</span>
+              {loadingStatus === 'ready' && (
+                <>
+                  <span className="text-sm">• {selectedSoundfont.name}</span>
+                  <span className={`text-sm px-2 py-1 rounded ${
+                    playbackMode === 'midi' 
+                      ? 'bg-blue-500/20 text-blue-300' 
+                      : 'bg-green-500/20 text-green-300'
+                  }`}>
+                    {playbackMode === 'midi' ? '🎵 MIDI' : '🎹 Instrument'}
+                  </span>
+                  {playbackMode === 'instrument' && selectedInstrument && (
+                    <span className="text-sm">• {selectedInstrument}</span>
+                  )}
+                </>
               )}
             </div>
+            {currentSong && (
+              <div className="mt-2 text-sm text-white/60">
+                Song: {currentSong.title} • Sound Font: {selectedSoundfont.name} • Mode: {playbackMode === 'midi' ? 'MIDI' : 'Instrument'}
+              </div>
+            )}
           </div>
         </div>
 

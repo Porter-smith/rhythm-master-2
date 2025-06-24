@@ -17,6 +17,7 @@ export interface CustomSong {
   difficulties: Array<'easy' | 'medium' | 'hard'>;
   bpm: number;
   format: 'custom';
+  soundFont?: string;  // Optional path to custom sound font (.sf2 file)
   notes: {
     easy?: CustomNote[];
     medium?: CustomNote[];
@@ -41,6 +42,7 @@ export interface MidiSong {
   difficulties: Array<'easy' | 'medium' | 'hard'>;
   bpm: number;
   format: 'midi';
+  soundFont?: string;  // Optional path to custom sound font (.sf2 file)
   midiFiles: {
     easy?: string;    // Path to easy MIDI file
     medium?: string;  // Path to medium MIDI file

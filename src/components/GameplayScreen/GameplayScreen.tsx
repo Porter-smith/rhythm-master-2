@@ -41,7 +41,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const initializationRef = useRef<boolean>(false);
   
   // SoundFont state using the manager
-  const { soundFontState, loadSoundFont, playNote } = useSoundFontManager();
+  const { soundFontState, loadSoundFont, loadSongSoundFont, playNote } = useSoundFontManager();
   
   // Loading state
   const [loadingState, setLoadingState] = useState<LoadingState>({
@@ -71,6 +71,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     songArtist: song.artist,
     songBPM: song.bpm,
     songDuration: song.duration,
+    songSoundFont: song.soundFont || 'None (using default)',
     loadingPhase: loadingState.phase,
     originalSong: song,
     loadedSong: loadedSong,
@@ -171,11 +172,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         // Phase 3: Load SoundFont
         setLoadingState({
           phase: 'loading-soundfont',
-          message: 'Loading Piano SoundFont...',
+          message: song.soundFont ? `Loading ${song.soundFont.includes('gzdoom') ? 'GZDoom' : 'Custom'} SoundFont...` : 'Loading Piano SoundFont...',
           progress: 60
         });
 
-        const soundFontSuccess = await loadSoundFont('Piano');
+        const soundFontSuccess = await loadSongSoundFont(finalSong);
         
         if (!soundFontSuccess) {
           console.error('❌ SoundFont loading failed - cannot continue');
@@ -540,6 +541,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             <div className={`${debugInfo.soundFontLoaded ? 'text-green-400' : 'text-red-400'}`}>
               <span className="text-blue-300">SoundFont:</span> {debugInfo.soundFontLoaded ? `✅ ${debugInfo.selectedSoundFont}` : '❌ Not Loaded'}
             </div>
+            <div><span className="text-blue-300">Song SoundFont:</span> {debugInfo.songSoundFont}</div>
             <div><span className="text-blue-300">Sampler State:</span> {debugInfo.samplerState}</div>
             <div><span className="text-blue-300">Sampler Ready:</span> {debugInfo.samplerReady ? 'Yes' : 'No'}</div>
             <div><span className="text-blue-300">SoundFont Loading:</span> {debugInfo.soundFontLoading ? 'Yes' : 'No'}</div>
