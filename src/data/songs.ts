@@ -205,6 +205,21 @@ export const midiSongs: MidiSong[] = [
     notes: {
       easy: []
     }
+  },
+  {
+    id: 'test-drive-midi',
+    title: 'Test Drive (MIDI)',
+    artist: 'Test',
+    duration: '1:15',
+    difficulties: ['easy'],
+    bpm: 140,
+    format: 'midi',
+    midiFiles: {
+      easy: '/midi/test-drive-easy.mid'
+    },
+    notes: {  
+      easy: []
+    }
   }
 ];
 

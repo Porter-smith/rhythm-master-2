@@ -11,7 +11,8 @@ interface FileSelectionPanelProps {
 const AVAILABLE_MIDI_FILES = [
   { path: '/midi/twinkle-easy.midi', name: 'Twinkle Twinkle (Easy)', description: 'Simple melody for testing basic parsing' },
   { path: '/midi/dooms-gate-easy.mid', name: 'Dooms Gate (Easy)', description: 'Dooms Gate melody' },
-  { path: '/midi/spearsofjustice-easy.mid', name: 'Spear of Justice (Easy)', description: 'Spear of Justice melody' }
+  { path: '/midi/spearsofjustice-easy.mid', name: 'Spear of Justice (Easy)', description: 'Spear of Justice melody' },
+  { path: '/midi/test-drive-easy.mid', name: 'Test Drive (Easy)', description: 'Test Drive melody' }
 ];
 
 export const FileSelectionPanel: React.FC<FileSelectionPanelProps> = ({ 

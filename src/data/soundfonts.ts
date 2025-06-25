@@ -53,6 +53,14 @@ export const SOUNDFONTS: Record<string, SoundFont> = {
     description: 'Classic Doom-style gaming sound font',
     category: 'gaming',
     tags: ['gaming', 'doom', 'retro', '8-bit', 'classic']
+  },
+  'piano-equinox': {
+    id: 'piano-equinox',
+    name: 'Equinox Grand Pianos',
+    url: '/soundfonts/Equinox_Grand_Pianos.sf2',
+    description: 'High-quality grand piano samples',
+    category: 'piano',
+    tags: ['piano', 'grand', 'acoustic', 'classical']
   }
 };
 
