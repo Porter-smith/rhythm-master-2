@@ -190,6 +190,21 @@ export const midiSongs: MidiSong[] = [
     notes: {
       easy: []
     }
+  },
+  {
+    id: 'spearsofjustice-midi',
+    title: 'Spear of Justice (MIDI)',
+    artist: 'Undertale',
+    duration: '1:15',
+    difficulties: ['easy'],
+    bpm: 140,
+    format: 'midi',
+    midiFiles: {
+      easy: '/midi/spearsofjustice-easy.mid'
+    },
+    notes: {
+      easy: []
+    }
   }
 ];
 
