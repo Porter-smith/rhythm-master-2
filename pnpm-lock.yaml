@@ -26,6 +26,12 @@ importers:
       soundfont2:
         specifier: ^0.4.0
         version: 0.4.0
+      spessasynth_core:
+        specifier: ^3.26.34
+        version: 3.26.34
+      spessasynth_lib:
+        specifier: ^3.26.31
+        version: 3.26.31
       tonal:
         specifier: ^5.0.0
         version: 5.2.1
@@ -1368,6 +1374,12 @@ packages:
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
+
+  spessasynth_core@3.26.34:
+    resolution: {integrity: sha512-6zaapLsv9o1h6niQ7Qsg0hjpgBrbWoBJhSxWWrsY4iAH48kOaq9cRWSD5lTKP+YixqeUnErbOWNXK5ywy6a13g==}
+
+  spessasynth_lib@3.26.31:
+    resolution: {integrity: sha512-L4HYB47P3SBUAUJYUBurmrcwSYuQr5kYRp+UOcKW3e+gMACkotNXxwtWx2dOT80Hg2D5VY+ysiSIkRUXVnhbtg==}
 
   standardized-audio-context@25.3.77:
     resolution: {integrity: sha512-Ki9zNz6pKcC5Pi+QPjPyVsD9GwJIJWgryji0XL9cAJXMGyn+dPOf6Qik1AHei0+UNVcc4BOCa0hWLBzlwqsW/A==}
@@ -2823,6 +2835,12 @@ snapshots:
   soundfont2@0.4.0: {}
 
   source-map-js@1.2.1: {}
+
+  spessasynth_core@3.26.34: {}
+
+  spessasynth_lib@3.26.31:
+    dependencies:
+      spessasynth_core: 3.26.34
 
   standardized-audio-context@25.3.77:
     dependencies:

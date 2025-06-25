@@ -200,6 +200,7 @@ export const MidiParserDebug: React.FC<MidiParserDebugProps> = ({ onBack, song }
             midiData={debugState.midiData}
             filteredNotes={filteredNotes}
             defaultSoundFontId={getDefaultSoundFontId()}
+            selectedMidiFile={debugState.selectedFile}
           />
         </div>
 

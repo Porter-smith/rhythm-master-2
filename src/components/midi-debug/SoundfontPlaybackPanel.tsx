@@ -1,340 +1,433 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Volume2, CheckCircle, Music } from 'lucide-react';
+import { Play, Pause, Square, Music, Volume2, AlertCircle, CheckCircle } from 'lucide-react';
 import { ParsedMidiData } from '../../music/MidiParser';
-import { Soundfont2Sampler, Reverb } from 'smplr';
-import { SoundFont2 } from 'soundfont2';
-import { SOUNDFONTS, getAllSoundFonts } from '../../data/soundfonts';
-import { getAudioContext } from '../../utils/audioContext';
 import { MidiNote } from './types';
+import { getAllSoundFonts } from '../../data/soundfonts';
+import { Synthetizer, Sequencer } from 'spessasynth_lib';
+
+// Type declaration for spessasynth_lib since there are no official types
+declare module 'spessasynth_lib' {
+  export class Synthetizer {
+    constructor(destination: AudioNode, soundFontBuffer: ArrayBuffer);
+  }
+  
+  export class Sequencer {
+    constructor(midiFiles: Array<{ binary: ArrayBuffer }>, synthesizer: Synthetizer);
+    play(): void;
+    pause(): void;
+    stop(): void;
+    currentTime: number;
+    duration: number;
+  }
+}
 
 interface SoundfontPlaybackPanelProps {
   midiData: ParsedMidiData | null;
   filteredNotes: MidiNote[];
-  defaultSoundFontId?: string;
+  defaultSoundFontId: string;
+  selectedMidiFile?: string; // Path to the selected MIDI file
 }
 
-export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({ 
-  midiData, 
-  filteredNotes, 
-  defaultSoundFontId = 'piano-yamaha'
+export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({
+  midiData,
+  filteredNotes,
+  defaultSoundFontId,
+  selectedMidiFile
 }) => {
-  const [sampler, setSampler] = useState<Soundfont2Sampler | undefined>(undefined);
-  const [samplerLoading, setSamplerLoading] = useState(false);
+  const [message, setMessage] = useState('Please wait for the soundFont to load.');
+  const [isLoading, setIsLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackProgress, setPlaybackProgress] = useState(0);
-  const [currentNotes, setCurrentNotes] = useState<Set<number>>(new Set());
-  const [selectedSoundFontId, setSelectedSoundFontId] = useState<string>(defaultSoundFontId);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [selectedSoundFontId, setSelectedSoundFontId] = useState(defaultSoundFontId);
+  const [error, setError] = useState<string | null>(null);
+  
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const synthRef = useRef<Synthetizer | null>(null);
+  const sequencerRef = useRef<Sequencer | null>(null);
+  const timeTrackingIntervalRef = useRef<number | null>(null);
+  const wasPlayingBeforeRef = useRef(false);
+  const previousMidiFileRef = useRef<string | undefined>(selectedMidiFile);
 
-  // Refs
-  const playbackTimerRef = useRef<number | null>(null);
-  const scheduledNotesRef = useRef<Set<number>>(new Set());
-  const isPlayingRef = useRef<boolean>(false);
-
-  // Get all available soundfonts
   const availableSoundFonts = getAllSoundFonts();
 
-  // Initialize sampler
-  const initializeSampler = async () => {
-    if (sampler) return;
-    
-    setSamplerLoading(true);
-    try {
-      const context = getAudioContext();
-      const soundFont = SOUNDFONTS[selectedSoundFontId];
-      
-      if (!soundFont) {
-        throw new Error(`SoundFont not found: ${selectedSoundFontId}`);
-      }
-      
-      console.log(`🎹 Loading soundfont for MIDI debug playback: ${soundFont.name}`);
-      
-      const newSampler = new Soundfont2Sampler(context, {
-        url: soundFont.url,
-        createSoundfont: (data) => new SoundFont2(data),
-      });
-
-      // Add reverb
-      const reverb = new Reverb(context);
-      newSampler.output.addEffect('reverb', reverb, 0.2);
-      newSampler.output.setVolume(80);
-
-      const loadedSampler = await newSampler.load;
-      console.log('✅ Sampler loaded for MIDI debug playback');
-
-      // Load all instruments for MIDI playback
-      const instruments = loadedSampler.instrumentNames || [];
-      console.log(`🎵 Loading ${instruments.length} instruments for MIDI playback`);
-      
-      for (let i = 0; i < Math.min(instruments.length, 16); i++) {
-        const instrument = instruments[i];
-        try {
-          await loadedSampler.loadInstrument(instrument);
-          console.log(`✅ Instrument loaded for channel ${i}: ${instrument}`);
-        } catch (err) {
-          console.warn(`⚠️ Failed to load instrument ${instrument}:`, err);
-        }
-      }
-
-      setSampler(loadedSampler);
-      console.log('🎉 Sampler ready for MIDI debug playback');
-    } catch (error) {
-      console.error('❌ Failed to initialize sampler:', error);
-    } finally {
-      setSamplerLoading(false);
-    }
-  };
-
-  // Handle soundfont change
-  const handleSoundFontChange = async (soundFontId: string) => {
-    setSelectedSoundFontId(soundFontId);
-    
-    // If sampler is already loaded, we need to reload it with the new soundfont
-    if (sampler) {
-      console.log('🔄 Reloading sampler with new soundfont...');
-      
-      // Cleanup existing sampler
-      try {
-        sampler.disconnect();
-      } catch (err) {
-        console.warn('⚠️ Error disconnecting sampler:', err);
-      }
-      
-      setSampler(undefined);
-      setCurrentNotes(new Set());
-      setPlaybackProgress(0);
-      
-      // Reload with new soundfont
-      await initializeSampler();
-    }
-  };
-
-  // Play MIDI notes
-  const playMidiNotes = async () => {
-    if (!midiData || !sampler || filteredNotes.length === 0) return;
-
-    try {
-      setIsPlaying(true);
-      isPlayingRef.current = true;
-      scheduledNotesRef.current.clear();
-      setCurrentNotes(new Set());
-      setPlaybackProgress(0);
-
-      console.log('🎮 Starting MIDI debug playback...');
-
-      // Sort notes by time
-      const sortedNotes = [...filteredNotes].sort((a, b) => a.time - b.time);
-
-      console.log(`🎵 Playing ${sortedNotes.length} notes`);
-
-      // Schedule notes
-      const startTime = sampler.context.currentTime;
-      sortedNotes.forEach((note, index) => {
-        if (!isPlayingRef.current) return;
-        
-        const noteStartTime = startTime + note.time;
-        const noteId = index;
-        
-        scheduledNotesRef.current.add(noteId);
-        
-        try {
-          const noteParams: {
-            note: number;
-            velocity: number;
-            detune: number;
-            time: number;
-            duration: number;
-            channel?: number;
-          } = {
-            note: note.pitch,
-            velocity: note.velocity,
-            detune: 0,
-            time: noteStartTime,
-            duration: note.duration,
-            channel: note.channel
-          };
-
-          sampler.start(noteParams);
-
-          // Visual feedback
-          setTimeout(() => {
-            if (isPlayingRef.current) {
-              setCurrentNotes(prev => new Set(prev).add(note.pitch));
-              setTimeout(() => {
-                setCurrentNotes(prev => {
-                  const newSet = new Set(prev);
-                  newSet.delete(note.pitch);
-                  return newSet;
-                });
-              }, note.duration * 1000);
-            }
-          }, note.time * 1000);
-        } catch (noteErr) {
-          console.error(`❌ Failed to schedule note ${index}:`, noteErr);
-        }
-      });
-
-      // Start progress timer
-      const maxTime = Math.max(...sortedNotes.map(n => n.time + n.duration));
-      const startTimestamp = Date.now();
-      
-      playbackTimerRef.current = window.setInterval(() => {
-        if (!isPlayingRef.current) {
-          if (playbackTimerRef.current) {
-            clearInterval(playbackTimerRef.current);
-            playbackTimerRef.current = null;
-          }
-          return;
-        }
-        
-        const elapsed = (Date.now() - startTimestamp) / 1000;
-        const progress = Math.min(1, elapsed / maxTime);
-        setPlaybackProgress(progress);
-        
-        if (elapsed >= maxTime) {
-          stopPlayback();
-        }
-      }, 100);
-
-    } catch (error) {
-      console.error('❌ Playback failed:', error);
-      setIsPlaying(false);
-    }
-  };
-
-  // Stop playback
-  const stopPlayback = () => {
-    console.log('🛑 Stopping MIDI debug playback...');
-    
-    isPlayingRef.current = false;
-    
-    if (sampler) {
-      try {
-        sampler.stop();
-      } catch (err) {
-        console.error('❌ Failed to stop sampler:', err);
-      }
-    }
-    
-    if (playbackTimerRef.current) {
-      clearInterval(playbackTimerRef.current);
-      playbackTimerRef.current = null;
-    }
-
-    scheduledNotesRef.current.clear();
-    setCurrentNotes(new Set());
-    setPlaybackProgress(0);
-    setIsPlaying(false);
-  };
-
-  // Cleanup on unmount
+  // Load soundfont on component mount or when soundfont changes
   useEffect(() => {
+    loadSoundfont();
+    
+    // Cleanup function
     return () => {
-      if (playbackTimerRef.current) {
-        clearInterval(playbackTimerRef.current);
+      if (timeTrackingIntervalRef.current) {
+        clearInterval(timeTrackingIntervalRef.current);
       }
-      if (sampler) {
-        sampler.disconnect();
+      if (sequencerRef.current) {
+        sequencerRef.current.stop();
       }
     };
-  }, [sampler]);
+  }, [selectedSoundFontId]);
+
+  // Watch for MIDI file changes and reset everything
+  useEffect(() => {
+    if (selectedMidiFile !== previousMidiFileRef.current) {
+      console.log('MIDI file changed from', previousMidiFileRef.current, 'to', selectedMidiFile);
+      
+      // Remember if we were playing before
+      wasPlayingBeforeRef.current = isPlaying;
+      
+      // Stop current playback
+      if (sequencerRef.current) {
+        sequencerRef.current.stop();
+      }
+      
+      // Clear time tracking
+      if (timeTrackingIntervalRef.current) {
+        clearInterval(timeTrackingIntervalRef.current);
+        timeTrackingIntervalRef.current = null;
+      }
+      
+      // Reset state
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+      setError(null);
+      
+      // Update the previous file reference
+      previousMidiFileRef.current = selectedMidiFile;
+      
+      // If we have a soundfont loaded and a new MIDI file, load and play it
+      if (selectedMidiFile && synthRef.current && !isLoading) {
+        setMessage('Loading new MIDI file...');
+        setTimeout(() => {
+          loadAndPlayMidi();
+        }, 100);
+      } else if (selectedMidiFile) {
+        setMessage('Ready to load MIDI file. Please wait for soundfont to finish loading.');
+      }
+    }
+  }, [selectedMidiFile, isLoading]);
+
+  const loadSoundfont = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      setMessage('Loading soundfont...');
+      
+      // Remember if we were playing before switching soundfonts
+      wasPlayingBeforeRef.current = isPlaying;
+      
+      // Stop current playback if any
+      if (sequencerRef.current) {
+        sequencerRef.current.stop();
+        setIsPlaying(false);
+      }
+      
+      // Clear time tracking
+      if (timeTrackingIntervalRef.current) {
+        clearInterval(timeTrackingIntervalRef.current);
+        timeTrackingIntervalRef.current = null;
+      }
+      
+      // Reset state
+      setCurrentTime(0);
+      setDuration(0);
+      
+      const selectedSoundFont = availableSoundFonts.find(sf => sf.id === selectedSoundFontId);
+      if (!selectedSoundFont) {
+        throw new Error('Selected soundfont not found');
+      }
+      
+      // Fetch the soundfont file
+      const response = await fetch(selectedSoundFont.url);
+      if (!response.ok) {
+        throw new Error(`Failed to load soundfont: ${response.statusText}`);
+      }
+      
+      const soundFontArrayBuffer = await response.arrayBuffer();
+      
+      // Create audio context
+      const context = new AudioContext();
+      audioContextRef.current = context;
+      
+      // Add the worklet module
+      await context.audioWorklet.addModule('/src/components/midi-debug/worklet_processor.min.js');
+      
+      // Create synthesizer
+      synthRef.current = new Synthetizer(context.destination, soundFontArrayBuffer);
+      
+      setMessage(`SoundFont "${selectedSoundFont.name}" has been loaded!`);
+      setIsLoading(false);
+      
+      // Auto-restart playback if we were playing before and have a MIDI file
+      if (wasPlayingBeforeRef.current && selectedMidiFile) {
+        setTimeout(() => {
+          loadAndPlayMidi();
+        }, 500); // Small delay to ensure everything is ready
+      }
+      
+    } catch (error) {
+      console.error('Error loading soundfont:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setError(errorMessage);
+      setMessage('Error loading soundfont. Please try again.');
+      setIsLoading(false);
+    }
+  };
+
+  const loadAndPlayMidi = async () => {
+    if (!selectedMidiFile) {
+      setMessage('Please select a MIDI file first.');
+      return;
+    }
+
+    if (!audioContextRef.current || !synthRef.current) {
+      setMessage('Audio context not ready. Please wait for soundfont to load.');
+      return;
+    }
+
+    try {
+      setMessage('Loading MIDI file...');
+      
+      // Fetch the MIDI file from the selected path
+      const response = await fetch(selectedMidiFile);
+      if (!response.ok) {
+        throw new Error(`Failed to load MIDI file: ${response.statusText}`);
+      }
+      
+      const midiFile = await response.arrayBuffer();
+      
+      // Resume audio context if needed
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+      
+      // Create sequencer and start playback
+      sequencerRef.current = new Sequencer([{ binary: midiFile }], synthRef.current);
+      sequencerRef.current.play();
+      
+      setIsPlaying(true);
+      setMessage(`Now playing: ${selectedMidiFile.split('/').pop()}`);
+      
+      // Start time tracking
+      startTimeTracking();
+      
+    } catch (error) {
+      console.error('Error loading MIDI file:', error);
+      setMessage('Error loading MIDI file. Please try again.');
+    }
+  };
+
+  const startTimeTracking = () => {
+    if (timeTrackingIntervalRef.current) {
+      clearInterval(timeTrackingIntervalRef.current);
+    }
+    
+    timeTrackingIntervalRef.current = window.setInterval(() => {
+      if (sequencerRef.current) {
+        setCurrentTime(sequencerRef.current.currentTime || 0);
+        setDuration(sequencerRef.current.duration || 0);
+      }
+    }, 100);
+  };
+
+  const handlePlayPause = () => {
+    if (!selectedMidiFile) {
+      setMessage('Please select a MIDI file first.');
+      return;
+    }
+
+    if (!sequencerRef.current) {
+      // If no sequencer, try to load and play the MIDI file
+      loadAndPlayMidi();
+      return;
+    }
+    
+    if (isPlaying) {
+      sequencerRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      sequencerRef.current.play();
+      setIsPlaying(true);
+    }
+  };
+
+  const handleStop = () => {
+    if (!sequencerRef.current) {
+      return;
+    }
+    
+    sequencerRef.current.stop();
+    setIsPlaying(false);
+    setCurrentTime(0);
+    
+    if (timeTrackingIntervalRef.current) {
+      clearInterval(timeTrackingIntervalRef.current);
+      timeTrackingIntervalRef.current = null;
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   return (
-    <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-      <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
-        <Volume2 className="w-5 h-5 text-green-400" />
-        <span>Soundfont Playback</span>
-      </h2>
-      
-      <div className="space-y-4">
-        {/* Soundfont Selection */}
-        <div>
-          <label className="block text-white/80 text-sm mb-2">SoundFont</label>
-          <select
-            value={selectedSoundFontId}
-            onChange={(e) => handleSoundFontChange(e.target.value)}
-            className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white"
-          >
-            {availableSoundFonts.map((soundFont) => (
-              <option key={soundFont.id} value={soundFont.id}>
-                {soundFont.name} ({soundFont.category})
-              </option>
-            ))}
-          </select>
-          <div className="text-xs text-white/60 mt-1">
-            {SOUNDFONTS[selectedSoundFontId]?.description}
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={initializeSampler}
-            disabled={samplerLoading || !!sampler}
-            className="bg-green-500 hover:bg-green-400 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 flex items-center space-x-2"
-          >
-            {samplerLoading ? (
-              <>
-                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
-                <span>Loading...</span>
-              </>
-            ) : sampler ? (
-              <>
-                <CheckCircle className="w-4 h-4" />
-                <span>Soundfont Ready</span>
-              </>
-            ) : (
-              <>
-                <Music className="w-4 h-4" />
-                <span>Load Soundfont</span>
-              </>
-            )}
-          </button>
-          
-          <button
-            onClick={playMidiNotes}
-            disabled={!sampler || isPlaying || filteredNotes.length === 0}
-            className="bg-blue-500 hover:bg-blue-400 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200 flex items-center space-x-2"
-          >
-            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            <span>{isPlaying ? 'Playing...' : 'Play Notes'}</span>
-          </button>
-          
-          <button
-            onClick={stopPlayback}
-            disabled={!isPlaying}
-            className="bg-red-500 hover:bg-red-400 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
-          >
-            ⏹️ Stop
-          </button>
-        </div>
+    <div className="space-y-6">
+      {/* SoundFont Selection */}
+      <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+        <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
+          <Volume2 className="w-5 h-5 text-blue-400" />
+          <span>SoundFont Selection</span>
+        </h2>
         
-        {isPlaying && (
+        <div className="space-y-4">
           <div>
-            <div className="w-full bg-white/20 rounded-full h-2 mb-2">
-              <div 
-                className="bg-blue-400 h-2 rounded-full transition-all duration-100"
-                style={{ width: `${playbackProgress * 100}%` }}
-              />
-            </div>
-            <div className="text-xs text-white/60">
-              Progress: {(playbackProgress * 100).toFixed(1)}%
-            </div>
+            <label htmlFor="soundfont-select" className="block text-sm font-medium text-white/70 mb-2">
+              Choose SoundFont:
+            </label>
+            <select
+              id="soundfont-select"
+              value={selectedSoundFontId}
+              onChange={(e) => setSelectedSoundFontId(e.target.value)}
+              disabled={isLoading}
+              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {availableSoundFonts.map((soundFont) => (
+                <option key={soundFont.id} value={soundFont.id} className="bg-gray-800 text-white">
+                  {soundFont.name}
+                </option>
+              ))}
+            </select>
           </div>
-        )}
-        
-        <div className="text-sm text-white/60">
-          {sampler ? '✅ Soundfont loaded and ready' : '⏳ Click "Load Soundfont" to enable playback'}
-          {currentNotes.size > 0 && (
-            <span className="ml-4 text-green-400">
-              🎹 Playing: {Array.from(currentNotes).join(', ')}
-            </span>
-          )}
-          {filteredNotes.length > 0 && (
-            <span className="ml-4 text-blue-400">
-              📝 {filteredNotes.length} notes available
-            </span>
+          
+          {selectedSoundFontId && (
+            <div className="text-sm text-white/60">
+              {availableSoundFonts.find(sf => sf.id === selectedSoundFontId)?.description}
+            </div>
           )}
         </div>
       </div>
+
+      {/* Status Message */}
+      <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+        <div className="flex items-center space-x-3 mb-4">
+          {error ? (
+            <AlertCircle className="w-5 h-5 text-red-400" />
+          ) : isLoading ? (
+            <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
+          ) : (
+            <CheckCircle className="w-5 h-5 text-green-400" />
+          )}
+          <h2 className="text-xl font-bold text-white">Status</h2>
+        </div>
+        
+        <p className="text-white/80">
+          {message}
+        </p>
+        
+        {error && (
+          <p className="text-red-400 text-sm mt-2">
+            Error: {error}
+          </p>
+        )}
+      </div>
+
+      {/* MIDI File Info */}
+      <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+        <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
+          <Music className="w-5 h-5 text-purple-400" />
+          <span>MIDI File</span>
+        </h2>
+        
+        <div className="space-y-4">
+          {selectedMidiFile ? (
+            <div className="text-sm text-white/80">
+              <div className="font-medium mb-2">Selected File:</div>
+              <div className="bg-white/5 rounded-lg p-3 font-mono text-white/90">
+                {selectedMidiFile.split('/').pop()}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-white/60">
+              No MIDI file selected. Please select a file in the main interface.
+            </div>
+          )}
+          
+          <div className="text-sm text-white/60">
+            Supported formats: .mid, .rmi, .xmf, .mxmf
+          </div>
+        </div>
+      </div>
+
+      {/* Playback Controls */}
+      {!isLoading && (
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+          <h2 className="text-xl font-bold text-white mb-4">Playback Controls</h2>
+          
+          <div className="space-y-4">
+            <div className="flex items-center justify-center space-x-4">
+              <button
+                onClick={handlePlayPause}
+                disabled={!selectedMidiFile}
+                className="flex items-center space-x-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200"
+              >
+                {isPlaying ? (
+                  <>
+                    <Pause className="w-5 h-5" />
+                    <span>Pause</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-5 h-5" />
+                    <span>Play</span>
+                  </>
+                )}
+              </button>
+              
+              <button
+                onClick={handleStop}
+                disabled={!selectedMidiFile}
+                className="flex items-center space-x-2 px-6 py-3 bg-red-500 hover:bg-red-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200"
+              >
+                <Square className="w-5 h-5" />
+                <span>Stop</span>
+              </button>
+            </div>
+            
+            {duration > 0 && (
+              <div className="text-center">
+                <div className="text-2xl font-mono text-white mb-2">
+                  {formatTime(currentTime)} / {formatTime(duration)}
+                </div>
+                <div className="w-full bg-white/20 rounded-full h-2">
+                  <div 
+                    className="bg-blue-500 h-2 rounded-full transition-all duration-200"
+                    style={{ width: `${(currentTime / duration) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MIDI Data Info */}
+      {midiData && (
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+          <h2 className="text-xl font-bold text-white mb-4">MIDI Data Info</h2>
+          
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="space-y-2">
+              <div><span className="text-white/60">Total Notes:</span> <span className="text-white font-mono">{midiData.totalNotes}</span></div>
+              <div><span className="text-white/60">Duration:</span> <span className="text-white font-mono">{midiData.totalDuration.toFixed(2)}s</span></div>
+            </div>
+            <div className="space-y-2">
+              <div><span className="text-white/60">Tracks:</span> <span className="text-white font-mono">{midiData.trackCount}</span></div>
+              <div><span className="text-white/60">Filtered Notes:</span> <span className="text-white font-mono">{filteredNotes.length}</span></div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}; 
+};
