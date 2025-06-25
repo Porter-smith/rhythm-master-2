@@ -14,6 +14,7 @@ interface GameplayScreenProps {
   onGameComplete: (score: GameScore) => void;
   onBack: () => void;
   audioEngine: AudioEngine;
+  selectedInstrument?: { channel: number; instrument: number };
 }
 
 // Loading phases
@@ -32,7 +33,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   audioOffset,
   onGameComplete,
   onBack,
-  audioEngine
+  audioEngine,
+  selectedInstrument
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameEngineRef = useRef<GameEngine | null>(null);
@@ -58,6 +60,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [hitStats, setHitStats] = useState({ perfect: 0, great: 0, good: 0, miss: 0 });
   const [showDebug, setShowDebug] = useState(false);
   const [loadedSong, setLoadedSong] = useState<Song | null>(null);
+  const [filteredNotes, setFilteredNotes] = useState<any[]>([]);
 
   // Debug information
   const debugInfo = {
@@ -413,7 +416,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     ctx.fillRect(hitLineX - 20, staffY, 40, staffHeight);
 
     // Draw notes
-    state.notes?.forEach((note: any) => {
+    filteredNotes.forEach((note: any) => {
       const noteX = hitLineX + (note.timeToHit * 200);
       const noteY = getNoteY(note.pitch, staffY, lineSpacing);
       
@@ -475,8 +478,28 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     onBack();
   };
 
+  // Filter notes by selected instrument/channel after song is loaded
+  useEffect(() => {
+    if (!loadedSong || !selectedInstrument) return;
+    const allNotes = loadedSong.notes[difficulty] || [];
+    // Only filter for MIDI songs
+    if (song.format === 'midi') {
+      setFilteredNotes(allNotes.filter((note: any) => note.channel === selectedInstrument.channel));
+    } else {
+      setFilteredNotes(allNotes);
+    }
+  }, [loadedSong, selectedInstrument, difficulty, song.format]);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black">
+      {/* Selected Instrument Debug Display */}
+      {selectedInstrument && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-green-900/80 text-green-200 px-6 py-2 rounded-xl shadow-lg z-50 font-mono text-lg flex items-center space-x-4">
+          <span>🎹 Playing Instrument:</span>
+          <span className="font-bold">Channel {selectedInstrument.channel + 1}</span>
+          <span className="font-bold">Program {selectedInstrument.instrument}</span>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between p-6 bg-black/50">
         <button
