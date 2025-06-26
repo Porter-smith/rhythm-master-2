@@ -5,22 +5,6 @@ import { MidiNote } from './types';
 import { getAllSoundFonts } from '../../data/soundfonts';
 import { Synthetizer, Sequencer } from 'spessasynth_lib';
 
-// Type declaration for spessasynth_lib since there are no official types
-declare module 'spessasynth_lib' {
-  export class Synthetizer {
-    constructor(destination: AudioNode, soundFontBuffer: ArrayBuffer);
-  }
-  
-  export class Sequencer {
-    constructor(midiFiles: Array<{ binary: ArrayBuffer }>, synthesizer: Synthetizer);
-    play(): void;
-    pause(): void;
-    stop(): void;
-    currentTime: number;
-    duration: number;
-  }
-}
-
 // MIDI instrument names
 const getMidiInstrumentName = (programNumber: number): string => {
   const instruments = [

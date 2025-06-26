@@ -21,6 +21,7 @@ export interface SoundFontState {
   isLoading: boolean;
   selectedSoundFont: string;
   error: string | null;
+  selectedInstrument?: { channel: number; instrument: number; name: string };
 }
 
 export const useSoundFontManager = () => {
@@ -29,7 +30,8 @@ export const useSoundFontManager = () => {
     isReady: false,
     isLoading: false,
     selectedSoundFont: 'Piano',
-    error: null
+    error: null,
+    selectedInstrument: undefined
   });
 
   // Use ref to always have access to current state in callbacks
@@ -98,23 +100,130 @@ export const useSoundFontManager = () => {
       console.log(`🎵 Available instruments:`, instruments);
       console.log(`🎵 Total instruments available: ${instruments.length}`);
 
-      // Load the first instrument
+      // Load the specific instrument based on selected instrument name
       if (instruments.length > 0) {
-        const firstInstrument = instruments[0];
-        console.log(`🎹 Loading instrument: ${firstInstrument}`);
-        await loadedSampler.loadInstrument(firstInstrument);
-        console.log(`✅ Instrument loaded: ${firstInstrument}`);
+        const selectedInstrument = stateRef.current.selectedInstrument;
         
-        // Try to load a few more instruments for better variety
-        const instrumentsToLoad = instruments.slice(0, 5); // Load first 5 instruments
-        for (const instrument of instrumentsToLoad) {
-          try {
-            await loadedSampler.loadInstrument(instrument);
-            console.log(`✅ Additional instrument loaded: ${instrument}`);
-          } catch (err) {
-            console.warn(`⚠️ Failed to load instrument ${instrument}:`, err);
+        if (selectedInstrument && selectedInstrument.name) {
+          // Try to find the instrument by name in the soundfont
+          console.log(`🎹 Looking for instrument: "${selectedInstrument.name}"`);
+          console.log(`🎹 Available instruments:`, instruments);
+          
+          // Try to find the instrument by name in the soundfont
+          const foundInstrument = instruments.find(inst => {
+            const instLower = inst.toLowerCase();
+            const selectedLower = selectedInstrument.name.toLowerCase();
+            
+            // Exact match
+            if (instLower === selectedLower) return true;
+            
+            // Contains match (either direction)
+            if (instLower.includes(selectedLower) || selectedLower.includes(instLower)) return true;
+            
+            // Handle common variations
+            const variations: Record<string, string[]> = {
+              'overdriven guitar': ['overdrive gt', 'overdrive', 'guitar'],
+              'acoustic guitar (steel)': ['steel-str.gt', 'steel', 'guitar'],
+              'acoustic guitar (nylon)': ['nylon-str.gt', 'nylon', 'guitar'],
+              'electric guitar (clean)': ['clean gt', 'clean', 'guitar'],
+              'electric guitar (jazz)': ['jazz gt', 'jazz', 'guitar'],
+              'electric guitar (muted)': ['muted gt', 'muted', 'guitar'],
+              'distortion guitar': ['distortiongt', 'distortion', 'guitar'],
+              'guitar harmonics': ['gt.harmonics', 'harmonics', 'guitar'],
+              'acoustic bass': ['acoustic bs', 'bass'],
+              'electric bass (finger)': ['fingered bs', 'bass'],
+              'electric bass (pick)': ['picked bs', 'bass'],
+              'fretless bass': ['fretless bs', 'bass'],
+              'slap bass 1': ['slap bass 1', 'bass'],
+              'slap bass 2': ['slap bass 2', 'bass'],
+              'synth bass 1': ['synth bass 1', 'bass'],
+              'synth bass 2': ['synth bass 2', 'bass'],
+              'drawbar organ': ['organ 1', 'organ'],
+              'percussive organ': ['organ 2', 'organ'],
+              'rock organ': ['organ 3', 'organ'],
+              'church organ': ['church org', 'organ'],
+              'reed organ': ['reed organ', 'organ'],
+              'acoustic grand piano': ['piano 1', 'piano'],
+              'bright acoustic piano': ['piano 2', 'piano'],
+              'electric grand piano': ['piano 3', 'piano'],
+              'honky-tonk piano': ['honky-tonk', 'piano'],
+              'electric piano 1': ['e.piano 1', 'piano'],
+              'electric piano 2': ['e.piano 2', 'piano'],
+              'harpsichord': ['harpsichord', 'harpsi'],
+              'clavi': ['clav', 'clavi'],
+              'violin': ['violin'],
+              'viola': ['viola'],
+              'cello': ['cello'],
+              'contrabass': ['contrabass'],
+              'tremolo strings': ['tremolo str', 'strings'],
+              'pizzicato strings': ['pizzicato str', 'strings'],
+              'orchestral harp': ['harp'],
+              'timpani': ['timpani'],
+              'string ensemble 1': ['strings', 'ensemble'],
+              'string ensemble 2': ['orchestra', 'ensemble'],
+              'synth strings 1': ['syn.strings1', 'strings'],
+              'synth strings 2': ['syn.strings2', 'strings'],
+              'choir aahs': ['choir aahs', 'choir'],
+              'voice oohs': ['voice oohs', 'voice'],
+              'synth voice': ['synvox', 'voice'],
+              'orchestra hit': ['orchestrahit', 'orchestra'],
+              'trumpet': ['trumpet'],
+              'trombone': ['trombone'],
+              'tuba': ['tuba'],
+              'muted trumpet': ['mutedtrumpet', 'trumpet'],
+              'french horn': ['french horns', 'horn'],
+              'brass section': ['brass 1', 'brass'],
+              'synth brass 1': ['synth brass1', 'brass'],
+              'synth brass 2': ['synth brass2', 'brass'],
+              'soprano sax': ['soprano sax', 'sax'],
+              'alto sax': ['alto sax', 'sax'],
+              'tenor sax': ['tenor sax', 'sax'],
+              'baritone sax': ['baritone sax', 'sax'],
+              'oboe': ['oboe'],
+              'english horn': ['english horn', 'horn'],
+              'bassoon': ['bassoon'],
+              'clarinet': ['clarinet'],
+              'piccolo': ['piccolo'],
+              'flute': ['flute'],
+              'recorder': ['recorder'],
+              'pan flute': ['pan flute', 'flute'],
+              'blown bottle': ['bottle blow', 'bottle'],
+              'shakuhachi': ['shakuhachi'],
+              'whistle': ['whistle'],
+              'ocarina': ['ocarina']
+            };
+            
+            // Check if we have a variation mapping for the selected instrument
+            const variation = variations[selectedLower];
+            if (variation) {
+              return variation.some((v: string) => instLower.includes(v));
+            }
+            
+            return false;
+          });
+          
+          if (foundInstrument) {
+            console.log(`🎹 Loading selected instrument: "${foundInstrument}"`);
+            try {
+              await loadedSampler.loadInstrument(foundInstrument);
+              console.log(`✅ Selected instrument loaded: "${foundInstrument}"`);
+            } catch (err) {
+              console.error(`❌ Failed to load selected instrument "${foundInstrument}":`, err);
+              throw new Error(`Failed to load instrument "${foundInstrument}"`);
+            }
+          } else {
+            console.error(`❌ Could not find instrument "${selectedInstrument.name}" in soundfont`);
+            throw new Error(`Instrument "${selectedInstrument.name}" not found in soundfont`);
           }
+        } else {
+          // No specific instrument selected, load the first instrument
+          const firstInstrument = instruments[0];
+          console.log(`🎹 Loading default instrument: "${firstInstrument}"`);
+          await loadedSampler.loadInstrument(firstInstrument);
+          console.log(`✅ Default instrument loaded: "${firstInstrument}"`);
         }
+        
+        // Don't load additional instruments - only load the selected one
       } else {
         console.warn(`⚠️ No instruments found in sound font: ${soundfontName}`);
       }
@@ -125,7 +234,8 @@ export const useSoundFontManager = () => {
         isReady: true,
         isLoading: false,
         selectedSoundFont: soundfontName,
-        error: null
+        error: null,
+        selectedInstrument: stateRef.current.selectedInstrument
       };
 
       setSoundFontState(newState);
@@ -141,7 +251,8 @@ export const useSoundFontManager = () => {
         isLoading: false,
         isReady: false,
         selectedSoundFont: soundfontName,
-        error: err instanceof Error ? err.message : 'Unknown error'
+        error: err instanceof Error ? err.message : 'Unknown error',
+        selectedInstrument: stateRef.current.selectedInstrument
       };
       setSoundFontState(errorState);
       stateRef.current = errorState;
@@ -150,7 +261,7 @@ export const useSoundFontManager = () => {
   }, []);
 
   // Load soundfont for a specific song - uses song's soundFont if available, otherwise defaults
-  const loadSongSoundFont = useCallback(async (song: Song): Promise<boolean> => {
+  const loadSongSoundFont = useCallback(async (song: Song, selectedInstrument?: { channel: number; instrument: number; name: string }): Promise<boolean> => {
     try {
       let soundFontToLoad = 'Piano'; // Default fallback
 
@@ -160,6 +271,19 @@ export const useSoundFontManager = () => {
         console.log(`🎹 Song has custom sound font: ${song.soundFont}`);
       } else {
         console.log(`🎹 No custom sound font for song, using default: ${soundFontToLoad}`);
+      }
+
+      // Update selected instrument in state
+      if (selectedInstrument) {
+        setSoundFontState(prev => ({
+          ...prev,
+          selectedInstrument
+        }));
+        stateRef.current = {
+          ...stateRef.current,
+          selectedInstrument
+        };
+        console.log(`🎹 Setting selected instrument: Channel ${selectedInstrument.channel + 1}, Program ${selectedInstrument.instrument}, Name: "${selectedInstrument.name}"`);
       }
 
       return await loadSoundFont(soundFontToLoad);
@@ -184,7 +308,8 @@ export const useSoundFontManager = () => {
       loadingPhase: currentState.isLoading ? 'loading' : currentState.isReady ? 'ready' : 'not-ready',
       samplerContextState: currentState.sampler?.context?.state,
       isReady: currentState.isReady,
-      isLoading: currentState.isLoading
+      isLoading: currentState.isLoading,
+      selectedInstrument: currentState.selectedInstrument
     });
 
     if (!currentState.sampler) {
@@ -198,17 +323,128 @@ export const useSoundFontManager = () => {
     }
 
     try {
+      // Find the instrument by name in the soundfont
+      if (!currentState.selectedInstrument || !currentState.sampler.instrumentNames) {
+        console.error('❌ No selected instrument or no instrument names available');
+        return false;
+      }
+
+      const instruments = currentState.sampler.instrumentNames;
+      console.log(`🎹 Available instruments:`, instruments);
+      console.log(`🎹 Looking for instrument: "${currentState.selectedInstrument.name}"`);
+      
+      // Try to find the instrument by name (case-insensitive)
+      const foundInstrument = instruments.find(inst => {
+        const instLower = inst.toLowerCase();
+        const selectedLower = currentState.selectedInstrument!.name.toLowerCase();
+        
+        // Exact match
+        if (instLower === selectedLower) return true;
+        
+        // Contains match (either direction)
+        if (instLower.includes(selectedLower) || selectedLower.includes(instLower)) return true;
+        
+        // Handle common variations
+        const variations: Record<string, string[]> = {
+          'overdriven guitar': ['overdrive gt', 'overdrive', 'guitar'],
+          'acoustic guitar (steel)': ['steel-str.gt', 'steel', 'guitar'],
+          'acoustic guitar (nylon)': ['nylon-str.gt', 'nylon', 'guitar'],
+          'electric guitar (clean)': ['clean gt', 'clean', 'guitar'],
+          'electric guitar (jazz)': ['jazz gt', 'jazz', 'guitar'],
+          'electric guitar (muted)': ['muted gt', 'muted', 'guitar'],
+          'distortion guitar': ['distortiongt', 'distortion', 'guitar'],
+          'guitar harmonics': ['gt.harmonics', 'harmonics', 'guitar'],
+          'acoustic bass': ['acoustic bs', 'bass'],
+          'electric bass (finger)': ['fingered bs', 'bass'],
+          'electric bass (pick)': ['picked bs', 'bass'],
+          'fretless bass': ['fretless bs', 'bass'],
+          'slap bass 1': ['slap bass 1', 'bass'],
+          'slap bass 2': ['slap bass 2', 'bass'],
+          'synth bass 1': ['synth bass 1', 'bass'],
+          'synth bass 2': ['synth bass 2', 'bass'],
+          'drawbar organ': ['organ 1', 'organ'],
+          'percussive organ': ['organ 2', 'organ'],
+          'rock organ': ['organ 3', 'organ'],
+          'church organ': ['church org', 'organ'],
+          'reed organ': ['reed organ', 'organ'],
+          'acoustic grand piano': ['piano 1', 'piano'],
+          'bright acoustic piano': ['piano 2', 'piano'],
+          'electric grand piano': ['piano 3', 'piano'],
+          'honky-tonk piano': ['honky-tonk', 'piano'],
+          'electric piano 1': ['e.piano 1', 'piano'],
+          'electric piano 2': ['e.piano 2', 'piano'],
+          'harpsichord': ['harpsichord', 'harpsi'],
+          'clavi': ['clav', 'clavi'],
+          'violin': ['violin'],
+          'viola': ['viola'],
+          'cello': ['cello'],
+          'contrabass': ['contrabass'],
+          'tremolo strings': ['tremolo str', 'strings'],
+          'pizzicato strings': ['pizzicato str', 'strings'],
+          'orchestral harp': ['harp'],
+          'timpani': ['timpani'],
+          'string ensemble 1': ['strings', 'ensemble'],
+          'string ensemble 2': ['orchestra', 'ensemble'],
+          'synth strings 1': ['syn.strings1', 'strings'],
+          'synth strings 2': ['syn.strings2', 'strings'],
+          'choir aahs': ['choir aahs', 'choir'],
+          'voice oohs': ['voice oohs', 'voice'],
+          'synth voice': ['synvox', 'voice'],
+          'orchestra hit': ['orchestrahit', 'orchestra'],
+          'trumpet': ['trumpet'],
+          'trombone': ['trombone'],
+          'tuba': ['tuba'],
+          'muted trumpet': ['mutedtrumpet', 'trumpet'],
+          'french horn': ['french horns', 'horn'],
+          'brass section': ['brass 1', 'brass'],
+          'synth brass 1': ['synth brass1', 'brass'],
+          'synth brass 2': ['synth brass2', 'brass'],
+          'soprano sax': ['soprano sax', 'sax'],
+          'alto sax': ['alto sax', 'sax'],
+          'tenor sax': ['tenor sax', 'sax'],
+          'baritone sax': ['baritone sax', 'sax'],
+          'oboe': ['oboe'],
+          'english horn': ['english horn', 'horn'],
+          'bassoon': ['bassoon'],
+          'clarinet': ['clarinet'],
+          'piccolo': ['piccolo'],
+          'flute': ['flute'],
+          'recorder': ['recorder'],
+          'pan flute': ['pan flute', 'flute'],
+          'blown bottle': ['bottle blow', 'bottle'],
+          'shakuhachi': ['shakuhachi'],
+          'whistle': ['whistle'],
+          'ocarina': ['ocarina']
+        };
+        
+        // Check if we have a variation mapping for the selected instrument
+        const variation = variations[selectedLower];
+        if (variation) {
+          return variation.some((v: string) => instLower.includes(v));
+        }
+        
+        return false;
+      });
+      
+      if (!foundInstrument) {
+        console.error(`❌ Could not find instrument "${currentState.selectedInstrument.name}" in soundfont`);
+        return false;
+      }
+
+      console.log(`🎹 Found matching instrument: "${foundInstrument}"`);
+
       const noteToPlay = {
         note: pitch,
         velocity: velocity,
         detune: 0,
         time: currentState.sampler.context.currentTime,
-        duration: duration
+        duration: duration,
+        instrument: foundInstrument
       };
       
       console.log(`🎵 Playing SoundFont note:`, noteToPlay);
       currentState.sampler.start(noteToPlay);
-      console.log(`✅ SoundFont note played successfully: ${pitch}`);
+      console.log(`✅ SoundFont note played successfully: ${pitch} with instrument "${foundInstrument}"`);
       return true;
     } catch (err) {
       console.error('❌ Failed to play note with SoundFont:', err);

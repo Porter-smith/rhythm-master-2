@@ -9,6 +9,8 @@ interface GameNote extends Note {
   isMissed: boolean;
   isActive: boolean;
   timeToHit: number;
+  channel?: number;
+  velocity?: number;
 }
 
 interface GameState {
@@ -38,7 +40,7 @@ interface HitResult {
     miss: number;
   };
   hitNote?: GameNote;
-  accuracy: 'perfect' | 'great' | 'good';
+  hitAccuracy: 'perfect' | 'great' | 'good';
 }
 
 export class GameEngine {
@@ -51,21 +53,30 @@ export class GameEngine {
   private isPlaying: boolean = false;
   private isPaused: boolean = false;
   private soundFontCallback?: (pitch: number, velocity: number, duration: number) => boolean;
+  private selectedInstrument?: { channel: number; instrument: number };
 
-  constructor(song: Song, difficulty: 'easy' | 'medium' | 'hard', audioOffset: number, audioEngine: AudioEngine) {
+  constructor(
+    song: Song, 
+    difficulty: 'easy' | 'medium' | 'hard', 
+    audioOffset: number, 
+    audioEngine: AudioEngine,
+    selectedInstrument?: { channel: number; instrument: number }
+  ) {
     console.log(`🎮 GameEngine constructor called with:`, {
       songTitle: song.title,
       songFormat: song.format,
       difficulty: difficulty,
       audioOffset: audioOffset,
       availableDifficulties: song.difficulties,
-      notesForDifficulty: song.notes[difficulty]?.length || 0
+      notesForDifficulty: song.notes[difficulty]?.length || 0,
+      selectedInstrument: selectedInstrument ? `Channel ${selectedInstrument.channel + 1}, Program ${selectedInstrument.instrument}` : 'None'
     });
 
     this.song = song;
     this.difficulty = difficulty;
     this.audioOffset = audioOffset;
     this.audioEngine = audioEngine;
+    this.selectedInstrument = selectedInstrument;
     
     // Check if notes exist for this difficulty
     const notesForDifficulty = song.notes[difficulty];
@@ -111,20 +122,40 @@ export class GameEngine {
       return [];
     }
 
-    const gameNotes = songNotes.map((note, index) => ({
-      ...note,
-      id: index,
-      x: 0,
-      y: 0,
-      isHit: false,
-      isMissed: false,
-      isActive: false,
-      timeToHit: 0
-    }));
+    // Filter notes by selected instrument channel for MIDI songs
+    let filteredNotes = songNotes;
+    if (this.song.format === 'midi' && this.selectedInstrument) {
+      filteredNotes = songNotes.filter((note) => {
+        // Check if note has channel property and matches selected channel
+        const midiNote = note as Note & { channel?: number };
+        return midiNote.channel === this.selectedInstrument!.channel;
+      });
+      console.log(`🎹 Filtered notes for channel ${this.selectedInstrument.channel + 1}: ${filteredNotes.length} notes (from ${songNotes.length} total)`);
+    } else if (this.song.format === 'midi' && !this.selectedInstrument) {
+      console.warn(`⚠️ MIDI song but no instrument selected - using all notes`);
+    }
+
+    const gameNotes = filteredNotes.map((note, index) => {
+      const midiNote = note as Note & { channel?: number; velocity?: number };
+      return {
+        ...note,
+        id: index,
+        x: 0,
+        y: 0,
+        isHit: false,
+        isMissed: false,
+        isActive: false,
+        timeToHit: 0,
+        channel: midiNote.channel, // Preserve channel information
+        velocity: midiNote.velocity // Preserve velocity information
+      };
+    });
 
     console.log(`🎮 Created ${gameNotes.length} game notes`);
-    console.log(`🎵 First note:`, gameNotes[0]);
-    console.log(`🎵 Last note:`, gameNotes[gameNotes.length - 1]);
+    if (gameNotes.length > 0) {
+      console.log(`🎵 First note:`, gameNotes[0]);
+      console.log(`🎵 Last note:`, gameNotes[gameNotes.length - 1]);
+    }
 
     return gameNotes;
   }
@@ -237,7 +268,7 @@ export class GameEngine {
       // Play note with SoundFont using the exact POC pattern
       let soundPlayed = false;
       if (this.soundFontCallback) {
-        const velocity = ('velocity' in closestNote ? closestNote.velocity : 80) || 80;
+        const velocity = closestNote.velocity || 80;
         console.log(`🎹 Calling SoundFont callback with: pitch=${closestNote.pitch}, velocity=${velocity}, duration=${closestNote.duration}`);
         soundPlayed = this.soundFontCallback(closestNote.pitch, velocity, closestNote.duration);
         console.log(`🎹 SoundFont callback result: ${soundPlayed}`);
@@ -257,7 +288,7 @@ export class GameEngine {
         accuracy: this.gameState.accuracy,
         hitStats: this.gameState.hitStats,
         hitNote: closestNote,
-        accuracy: accuracy
+        hitAccuracy: accuracy
       };
     } else {
       console.log(`❌ No note in range for input at ${gameTime.toFixed(3)}s`);

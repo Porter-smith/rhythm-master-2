@@ -42,7 +42,7 @@ interface InstrumentInfo {
 
 interface InstrumentSelectorPanelProps {
   midiFile: ArrayBuffer | null;
-  onSelectInstrument: (channel: number, instrument: number) => void;
+  onSelectInstrument: (channel: number, instrument: number, name: string) => void;
   selectedChannel: number | null;
 }
 
@@ -170,7 +170,7 @@ export const InstrumentSelectorPanel: React.FC<InstrumentSelectorPanelProps> = (
         {instruments.map((instrument) => (
           <button
             key={instrument.channel}
-            onClick={() => onSelectInstrument(instrument.channel, instrument.instrument)}
+            onClick={() => onSelectInstrument(instrument.channel, instrument.instrument, instrument.name)}
             className={`w-full text-left bg-white/5 rounded-lg p-4 border transition-all duration-200 flex items-center justify-between space-x-4 ${
               selectedChannel === instrument.channel ? 'border-green-400/70 bg-green-400/10 ring-2 ring-green-400' : 'border-white/10 hover:border-blue-400'
             }`}

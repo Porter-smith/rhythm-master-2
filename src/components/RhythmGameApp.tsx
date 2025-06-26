@@ -17,6 +17,7 @@ export const RhythmGameApp: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>('menu');
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
+  const [selectedInstrument, setSelectedInstrument] = useState<{ channel: number; instrument: number; name: string } | undefined>(undefined);
   const [gameScore, setGameScore] = useState<GameScore | null>(null);
   const [audioOffset, setAudioOffset] = useState<number>(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -63,9 +64,10 @@ export const RhythmGameApp: React.FC = () => {
     transitionTo('soundFontPOC' as GameState);
   };
 
-  const handleSongSelect = (song: Song, difficulty: 'easy' | 'medium' | 'hard') => {
+  const handleSongSelect = (song: Song, difficulty: 'easy' | 'medium' | 'hard', instrument?: { channel: number; instrument: number; name: string }) => {
     setSelectedSong(song);
     setSelectedDifficulty(difficulty);
+    setSelectedInstrument(instrument);
     transitionTo('gameplay');
   };
 
@@ -76,6 +78,7 @@ export const RhythmGameApp: React.FC = () => {
 
   const handleReturnToMenu = () => {
     setSelectedSong(null);
+    setSelectedInstrument(undefined);
     setGameScore(null);
     transitionTo('menu');
   };
@@ -120,6 +123,7 @@ export const RhythmGameApp: React.FC = () => {
             onGameComplete={handleGameComplete}
             onBack={() => transitionTo('songSelection')}
             audioEngine={audioEngine}
+            selectedInstrument={selectedInstrument}
           />
         ) : null;
       case 'settings':

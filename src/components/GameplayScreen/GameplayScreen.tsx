@@ -14,7 +14,7 @@ interface GameplayScreenProps {
   onGameComplete: (score: GameScore) => void;
   onBack: () => void;
   audioEngine: AudioEngine;
-  selectedInstrument?: { channel: number; instrument: number };
+  selectedInstrument?: { channel: number; instrument: number; name: string };
 }
 
 // Loading phases
@@ -25,6 +25,19 @@ interface LoadingState {
   message: string;
   progress: number;
   error?: string;
+}
+
+// Note interface for filtered notes
+interface FilteredNote {
+  time: number;
+  pitch: number;
+  duration: number;
+  channel?: number;
+  velocity?: number;
+  timeToHit?: number;
+  isHit?: boolean;
+  isMissed?: boolean;
+  isActive?: boolean;
 }
 
 export const GameplayScreen: React.FC<GameplayScreenProps> = ({
@@ -43,7 +56,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const initializationRef = useRef<boolean>(false);
   
   // SoundFont state using the manager
-  const { soundFontState, loadSoundFont, loadSongSoundFont, playNote } = useSoundFontManager();
+  const { soundFontState, loadSongSoundFont, playNote } = useSoundFontManager();
   
   // Loading state
   const [loadingState, setLoadingState] = useState<LoadingState>({
@@ -57,10 +70,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [score, setScore] = useState(0);
   const [combo, setCombo] = useState(0);
   const [accuracy, setAccuracy] = useState(100);
-  const [hitStats, setHitStats] = useState({ perfect: 0, great: 0, good: 0, miss: 0 });
   const [showDebug, setShowDebug] = useState(false);
   const [loadedSong, setLoadedSong] = useState<Song | null>(null);
-  const [filteredNotes, setFilteredNotes] = useState<any[]>([]);
+  const [filteredNotes, setFilteredNotes] = useState<FilteredNote[]>([]);
 
   // Debug information
   const debugInfo = {
@@ -74,7 +86,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     songArtist: song.artist,
     songBPM: song.bpm,
     songDuration: song.duration,
-    songSoundFont: song.soundFont || 'None (using default)',
+    songSoundFont: (song as any).soundFont || 'None (using default)',
     loadingPhase: loadingState.phase,
     originalSong: song,
     loadedSong: loadedSong,
@@ -101,6 +113,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       try {
         console.log('\n🎮 ===== GAMEPLAY INITIALIZATION =====');
         console.log(`🎯 Selected difficulty: ${difficulty}`);
+        console.log(`🎹 Selected instrument:`, selectedInstrument ? `Channel ${selectedInstrument.channel + 1}, Program ${selectedInstrument.instrument}` : 'None');
         
         // Phase 1: Initialize basic components
         setLoadingState({
@@ -116,7 +129,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           progress: 20
         });
 
-        let finalSong = song;
+        const finalSong = song;
 
         // Check if we need to load MIDI data for the SELECTED difficulty only
         if (song.format === 'midi' && (!song.notes[difficulty] || song.notes[difficulty]!.length === 0)) {
@@ -138,7 +151,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             }
 
             console.log(`🎯 Loading only ${difficulty} difficulty to avoid loading all files`);
-            await musicPlayerRef.current.loadSong(singleDifficultySong);
+            await musicPlayerRef.current.loadSong(singleDifficultySong as any);
             
             // Copy the loaded notes back to the original song
             if (singleDifficultySong.notes[difficulty]) {
@@ -175,11 +188,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         // Phase 3: Load SoundFont
         setLoadingState({
           phase: 'loading-soundfont',
-          message: song.soundFont ? `Loading ${song.soundFont.includes('gzdoom') ? 'GZDoom' : 'Custom'} SoundFont...` : 'Loading Piano SoundFont...',
+          message: (song as any).soundFont ? `Loading ${(song as any).soundFont.includes('gzdoom') ? 'GZDoom' : 'Custom'} SoundFont...` : 'Loading Piano SoundFont...',
           progress: 60
         });
 
-        const soundFontSuccess = await loadSongSoundFont(finalSong);
+        const soundFontSuccess = await loadSongSoundFont(finalSong as any, selectedInstrument);
         
         if (!soundFontSuccess) {
           console.error('❌ SoundFont loading failed - cannot continue');
@@ -199,7 +212,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           progress: 90
         });
 
-        const gameEngine = new GameEngine(finalSong, difficulty, audioOffset, audioEngine);
+        const gameEngine = new GameEngine(finalSong, difficulty, audioOffset, audioEngine, selectedInstrument);
         gameEngineRef.current = gameEngine;
 
         setLoadingState({
@@ -292,7 +305,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         setScore(result.score);
         setCombo(result.combo);
         setAccuracy(result.accuracy);
-        setHitStats(result.hitStats);
       }
     } else if (event.code === 'Escape') {
       if (gameState === 'playing') {
@@ -327,6 +339,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       // Update game state
       const currentState = gameEngineRef.current.update(performance.now());
       
+      // Update filtered notes from game engine state
+      setFilteredNotes(currentState.notes);
+      
       // Check if game is complete
       if (currentState.isComplete) {
         const finalScore: GameScore = {
@@ -342,7 +357,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       }
 
       // Render game
-      renderGame(ctx, canvas, currentState);
+      renderGame(ctx, canvas);
       
       animationFrameRef.current = requestAnimationFrame(gameLoop);
     };
@@ -364,7 +379,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     return 'D';
   };
 
-  const renderGame = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement, state: any) => {
+  const renderGame = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
     const width = canvas.width;
     const height = canvas.height;
 
@@ -416,8 +431,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     ctx.fillRect(hitLineX - 20, staffY, 40, staffHeight);
 
     // Draw notes
-    filteredNotes.forEach((note: any) => {
-      const noteX = hitLineX + (note.timeToHit * 200);
+    filteredNotes.forEach((note: FilteredNote) => {
+      const noteX = hitLineX + ((note.timeToHit || 0) * 200);
       const noteY = getNoteY(note.pitch, staffY, lineSpacing);
       
       // Note color based on state
@@ -478,17 +493,13 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     onBack();
   };
 
-  // Filter notes by selected instrument/channel after song is loaded
+  // Initialize filtered notes when game starts
   useEffect(() => {
-    if (!loadedSong || !selectedInstrument) return;
-    const allNotes = loadedSong.notes[difficulty] || [];
-    // Only filter for MIDI songs
-    if (song.format === 'midi') {
-      setFilteredNotes(allNotes.filter((note: any) => note.channel === selectedInstrument.channel));
-    } else {
-      setFilteredNotes(allNotes);
+    if (gameEngineRef.current && gameState === 'playing') {
+      const currentState = gameEngineRef.current.update(performance.now());
+      setFilteredNotes(currentState.notes);
     }
-  }, [loadedSong, selectedInstrument, difficulty, song.format]);
+  }, [gameState]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black">
@@ -496,8 +507,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       {selectedInstrument && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-green-900/80 text-green-200 px-6 py-2 rounded-xl shadow-lg z-50 font-mono text-lg flex items-center space-x-4">
           <span>🎹 Playing Instrument:</span>
-          <span className="font-bold">Channel {selectedInstrument.channel + 1}</span>
-          <span className="font-bold">Program {selectedInstrument.instrument}</span>
+          <span className="font-bold">"{selectedInstrument.name}"</span>
+          <span className="text-sm">(Ch{selectedInstrument.channel + 1}, Prog{selectedInstrument.instrument})</span>
         </div>
       )}
       {/* Header */}

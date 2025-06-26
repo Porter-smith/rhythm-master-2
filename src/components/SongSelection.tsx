@@ -4,9 +4,10 @@ import { Song } from '../types/game';
 import { allSongs } from '../data/songs';
 import { WaveformPreview } from './WaveformPreview';
 import { InstrumentSelectorPanel } from './midi-debug/InstrumentSelectorPanel';
+import { SongNotePreview } from './SongNotePreview';
 
 interface SongSelectionProps {
-  onSongSelect: (song: Song, difficulty: 'easy' | 'medium' | 'hard', instrument?: { channel: number; instrument: number }) => void;
+  onSongSelect: (song: Song, difficulty: 'easy' | 'medium' | 'hard', instrument?: { channel: number; instrument: number; name: string }) => void;
   onBack: () => void;
 }
 
@@ -68,10 +69,10 @@ export const SongSelection: React.FC<SongSelectionProps> = ({ onSongSelect, onBa
   };
 
   // Handle instrument selection
-  const handleInstrumentSelect = (channel: number, instrument: number) => {
+  const handleInstrumentSelect = (channel: number, instrument: number, name: string) => {
     setSelectedChannel(channel);
     if (pendingSong && pendingDifficulty) {
-      onSongSelect(pendingSong, pendingDifficulty, { channel, instrument });
+      onSongSelect(pendingSong, pendingDifficulty, { channel, instrument, name });
     }
   };
 
@@ -121,73 +122,83 @@ export const SongSelection: React.FC<SongSelectionProps> = ({ onSongSelect, onBa
 
           {/* Song Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {allSongs.map((song) => (
-              <div
-                key={song.id}
-                className="group relative bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 hover:border-white/40 transition-all duration-300 hover:scale-105 hover:shadow-2xl cursor-pointer"
-                onMouseEnter={() => setHoveredSong(song.id)}
-                onMouseLeave={() => setHoveredSong(null)}
-                onClick={() => setSelectedSong(song)}
-              >
-                {/* Format Badge */}
-                <div className="absolute top-4 right-4">
-                  <div className={`flex items-center space-x-1 px-2 py-1 rounded-lg border text-xs font-mono ${getFormatColor(song.format)}`}>
-                    {getFormatIcon(song.format)}
-                    <span>{song.format.toUpperCase()}</span>
+            {allSongs.map((song) => {
+              // Pick the first available difficulty for preview
+              const previewDifficulty = song.difficulties[0];
+              const previewNotes = song.notes[previewDifficulty] || [];
+              return (
+                <div
+                  key={song.id}
+                  className="group relative bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 hover:border-white/40 transition-all duration-300 hover:scale-105 hover:shadow-2xl cursor-pointer"
+                  onMouseEnter={() => setHoveredSong(song.id)}
+                  onMouseLeave={() => setHoveredSong(null)}
+                  onClick={() => setSelectedSong(song)}
+                >
+                  {/* Format Badge */}
+                  <div className="absolute top-4 right-4">
+                    <div className={`flex items-center space-x-1 px-2 py-1 rounded-lg border text-xs font-mono ${getFormatColor(song.format)}`}>
+                      {getFormatIcon(song.format)}
+                      <span>{song.format.toUpperCase()}</span>
+                    </div>
                   </div>
-                </div>
 
-                {/* Song Info */}
-                <div className="mb-4 pr-16">
-                  <h3 className="text-2xl font-bold text-white mb-2">{song.title}</h3>
-                  <div className="flex items-center space-x-2 text-white/70 mb-1">
-                    <User className="w-4 h-4" />
-                    <span className="italic text-lg">{song.artist}</span>
+                  {/* Song Info */}
+                  <div className="mb-4 pr-16">
+                    <h3 className="text-2xl font-bold text-white mb-2">{song.title}</h3>
+                    <div className="flex items-center space-x-2 text-white/70 mb-1">
+                      <User className="w-4 h-4" />
+                      <span className="italic text-lg">{song.artist}</span>
+                    </div>
+                    <div className="flex items-center space-x-2 text-white/70">
+                      <Clock className="w-4 h-4" />
+                      <span className="font-mono">{song.duration}</span>
+                      <span className="text-white/50">•</span>
+                      <span className="font-mono">{song.bpm} BPM</span>
+                    </div>
                   </div>
-                  <div className="flex items-center space-x-2 text-white/70">
-                    <Clock className="w-4 h-4" />
-                    <span className="font-mono">{song.duration}</span>
-                    <span className="text-white/50">•</span>
-                    <span className="font-mono">{song.bpm} BPM</span>
-                  </div>
-                </div>
 
-                {/* Waveform Preview */}
-                {hoveredSong === song.id && (
-                  <div className="mb-4 h-16 bg-black/30 rounded-lg overflow-hidden">
-                    <WaveformPreview song={song} />
-                  </div>
-                )}
+                  {/* Waveform Preview */}
+                  {hoveredSong === song.id && (
+                    <div className="mb-4 h-16 bg-black/30 rounded-lg overflow-hidden">
+                      <WaveformPreview song={song} />
+                    </div>
+                  )}
 
-                {/* Difficulties */}
-                <div className="space-y-2">
-                  <h4 className="text-white/80 font-semibold">Difficulties:</h4>
-                  {song.difficulties.map((difficulty) => (
-                    <button
-                      key={difficulty}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSongSelect(song, difficulty);
-                      }}
-                      className={`w-full flex items-center justify-between p-3 rounded-lg bg-black/20 hover:bg-black/40 transition-colors duration-200 ${getDifficultyColor(difficulty)}`}
-                    >
-                      <div className="flex items-center space-x-2">
-                        <div className="flex">
-                          {[...Array(getDifficultyStars(difficulty))].map((_, i) => (
-                            <Star key={i} className="w-4 h-4 fill-current" />
-                          ))}
+                  {/* Difficulties */}
+                  <div className="space-y-2">
+                    <h4 className="text-white/80 font-semibold">Difficulties:</h4>
+                    {song.difficulties.map((difficulty) => (
+                      <button
+                        key={difficulty}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSongSelect(song, difficulty);
+                        }}
+                        className={`w-full flex items-center justify-between p-3 rounded-lg bg-black/20 hover:bg-black/40 transition-colors duration-200 ${getDifficultyColor(difficulty)}`}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <div className="flex">
+                            {[...Array(getDifficultyStars(difficulty))].map((_, i) => (
+                              <Star key={i} className="w-4 h-4 fill-current" />
+                            ))}
+                          </div>
+                          <span className="capitalize font-semibold">{difficulty}</span>
                         </div>
-                        <span className="capitalize font-semibold">{difficulty}</span>
-                      </div>
-                      <Play className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-                    </button>
-                  ))}
-                </div>
+                        <Play className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                      </button>
+                    ))}
+                  </div>
 
-                {/* Hover overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
-              </div>
-            ))}
+                  {/* Song Note Preview (always shown) */}
+                  <div className="mt-4 h-16 bg-black/30 rounded-lg overflow-hidden">
+                    <SongNotePreview notes={previewNotes} width={320} height={64} />
+                  </div>
+
+                  {/* Hover overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                </div>
+              );
+            })}
           </div>
         </>
       )}
