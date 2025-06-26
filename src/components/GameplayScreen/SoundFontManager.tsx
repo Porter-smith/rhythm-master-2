@@ -22,6 +22,7 @@ export interface SoundFontState {
   selectedSoundFont: string;
   error: string | null;
   selectedInstrument?: { channel: number; instrument: number; name: string };
+  isMuted: boolean;
 }
 
 export const useSoundFontManager = () => {
@@ -31,7 +32,8 @@ export const useSoundFontManager = () => {
     isLoading: false,
     selectedSoundFont: 'Piano',
     error: null,
-    selectedInstrument: undefined
+    selectedInstrument: undefined,
+    isMuted: false
   });
 
   // Use ref to always have access to current state in callbacks
@@ -235,7 +237,8 @@ export const useSoundFontManager = () => {
         isLoading: false,
         selectedSoundFont: soundfontName,
         error: null,
-        selectedInstrument: stateRef.current.selectedInstrument
+        selectedInstrument: stateRef.current.selectedInstrument,
+        isMuted: stateRef.current.isMuted
       };
 
       setSoundFontState(newState);
@@ -252,7 +255,8 @@ export const useSoundFontManager = () => {
         isReady: false,
         selectedSoundFont: soundfontName,
         error: err instanceof Error ? err.message : 'Unknown error',
-        selectedInstrument: stateRef.current.selectedInstrument
+        selectedInstrument: stateRef.current.selectedInstrument,
+        isMuted: stateRef.current.isMuted
       };
       setSoundFontState(errorState);
       stateRef.current = errorState;
@@ -309,8 +313,15 @@ export const useSoundFontManager = () => {
       samplerContextState: currentState.sampler?.context?.state,
       isReady: currentState.isReady,
       isLoading: currentState.isLoading,
-      selectedInstrument: currentState.selectedInstrument
+      selectedInstrument: currentState.selectedInstrument,
+      isMuted: currentState.isMuted
     });
+
+    // Check if muted first
+    if (currentState.isMuted) {
+      console.log('🔇 SoundFont callback skipped: Muted');
+      return false;
+    }
 
     if (!currentState.sampler) {
       console.log('❌ SoundFont callback failed: No sampler');
@@ -452,10 +463,49 @@ export const useSoundFontManager = () => {
     }
   }, []); // Empty deps - callback never changes, always uses current state
 
+  // Mute the instrument
+  const mute = useCallback(() => {
+    console.log('🔇 Muting SoundFont instrument');
+    setSoundFontState(prev => ({
+      ...prev,
+      isMuted: true
+    }));
+    stateRef.current = {
+      ...stateRef.current,
+      isMuted: true
+    };
+  }, []);
+
+  // Unmute the instrument
+  const unmute = useCallback(() => {
+    console.log('🔊 Unmuting SoundFont instrument');
+    setSoundFontState(prev => ({
+      ...prev,
+      isMuted: false
+    }));
+    stateRef.current = {
+      ...stateRef.current,
+      isMuted: false
+    };
+  }, []);
+
+  // Toggle mute state
+  const toggleMute = useCallback(() => {
+    const currentState = stateRef.current;
+    if (currentState.isMuted) {
+      unmute();
+    } else {
+      mute();
+    }
+  }, [mute, unmute]);
+
   return {
     soundFontState,
     loadSoundFont,
     loadSongSoundFont,
-    playNote
+    playNote,
+    mute,
+    unmute,
+    toggleMute
   };
 };

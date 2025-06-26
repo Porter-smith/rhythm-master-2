@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Square, Music, Volume2, AlertCircle, CheckCircle, Piano } from 'lucide-react';
+import { Play, Pause, Square, Music, Volume2, VolumeX, AlertCircle, CheckCircle, Piano } from 'lucide-react';
 import { ParsedMidiData } from '../../music/MidiParser';
 import { MidiNote } from './types';
 import { getAllSoundFonts } from '../../data/soundfonts';
@@ -68,6 +68,7 @@ interface InstrumentInfo {
   noteCount: number;
   timeRange?: { start: number; end: number };
   notes: NoteEvent[];
+  muted?: boolean;
 }
 
 interface SoundfontPlaybackPanelProps {
@@ -91,6 +92,7 @@ export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({
   const [selectedSoundFontId, setSelectedSoundFontId] = useState(defaultSoundFontId);
   const [error, setError] = useState<string | null>(null);
   const [instruments, setInstruments] = useState<InstrumentInfo[]>([]);
+  const [mutedInstruments, setMutedInstruments] = useState<Set<number>>(new Set());
   
   const audioContextRef = useRef<AudioContext | null>(null);
   const synthRef = useRef<Synthetizer | null>(null);
@@ -534,6 +536,31 @@ export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Mute/unmute functions for individual instruments
+  const toggleInstrumentMute = async (channel: number) => {
+    const newMutedState = !mutedInstruments.has(channel);
+    
+    setMutedInstruments(prev => {
+      const newSet = new Set(prev);
+      if (newMutedState) {
+        newSet.add(channel);
+        console.log(`🔇 Muted instrument channel ${channel + 1}`);
+      } else {
+        newSet.delete(channel);
+        console.log(`🔊 Unmuted instrument channel ${channel + 1}`);
+      }
+      return newSet;
+    });
+
+    // Use the native spessasynth_lib muteChannel method
+    if (synthRef.current) {
+      synthRef.current.muteChannel(channel, newMutedState);
+      console.log(`🎛️ Channel ${channel + 1} ${newMutedState ? 'muted' : 'unmuted'} via synthesizer`);
+    }
+  };
+
+  const isInstrumentMuted = (channel: number) => mutedInstruments.has(channel);
+
   return (
     <div className="space-y-6">
       {/* SoundFont Selection */}
@@ -720,14 +747,20 @@ export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({
               
               return (
                 <div key={instrument.channel} className={`bg-white/5 rounded-lg p-4 border transition-all duration-200 ${
-                  isActive ? 'border-green-400/50 bg-green-400/10' : 'border-white/10'
+                  isInstrumentMuted(instrument.channel)
+                    ? 'border-red-400/50 bg-red-400/10 opacity-60'
+                    : isActive 
+                      ? 'border-green-400/50 bg-green-400/10' 
+                      : 'border-white/10'
                 }`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center space-x-3">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-200 ${
-                        isActive 
-                          ? 'bg-green-500 text-white animate-pulse' 
-                          : 'bg-blue-500/20 text-blue-400'
+                        isInstrumentMuted(instrument.channel)
+                          ? 'bg-red-500 text-white'
+                          : isActive 
+                            ? 'bg-green-500 text-white animate-pulse' 
+                            : 'bg-blue-500/20 text-blue-400'
                       }`}>
                         {instrument.channel + 1}
                       </div>
@@ -738,9 +771,29 @@ export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({
                         </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-white font-mono text-sm">{instrument.noteCount}</div>
-                      <div className="text-white/60 text-xs">total notes</div>
+                    <div className="flex items-center space-x-3">
+                      {/* Mute Button */}
+                      <button
+                        onClick={() => toggleInstrumentMute(instrument.channel)}
+                        className={`p-2 rounded-lg transition-all duration-200 ${
+                          isInstrumentMuted(instrument.channel)
+                            ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                            : 'bg-white/10 text-white/70 hover:bg-white/20'
+                        }`}
+                        title={isInstrumentMuted(instrument.channel) ? 'Unmute instrument' : 'Mute instrument'}
+                      >
+                        {isInstrumentMuted(instrument.channel) ? (
+                          <VolumeX className="w-4 h-4" />
+                        ) : (
+                          <Volume2 className="w-4 h-4" />
+                        )}
+                      </button>
+                      
+                      {/* Note Count */}
+                      <div className="text-right">
+                        <div className="text-white font-mono text-sm">{instrument.noteCount}</div>
+                        <div className="text-white/60 text-xs">total notes</div>
+                      </div>
                     </div>
                   </div>
                   
@@ -753,16 +806,25 @@ export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({
                   {/* Currently Playing Notes */}
                   <div className="mt-2 flex items-center space-x-2">
                     <div className={`w-2 h-2 rounded-full transition-all duration-200 ${
-                      isActive 
-                        ? 'bg-green-400 animate-pulse' 
-                        : 'bg-gray-400/40'
+                      isInstrumentMuted(instrument.channel)
+                        ? 'bg-red-400'
+                        : isActive 
+                          ? 'bg-green-400 animate-pulse' 
+                          : 'bg-gray-400/40'
                     }`} />
                     <span className={`text-xs transition-colors duration-200 ${
-                      isActive 
-                        ? 'text-green-400 font-medium' 
-                        : 'text-white/40'
+                      isInstrumentMuted(instrument.channel)
+                        ? 'text-red-400 font-medium'
+                        : isActive 
+                          ? 'text-green-400 font-medium' 
+                          : 'text-white/40'
                     }`}>
-                      {isActive ? `Playing ${currentlyPlayingNotes.length} note${currentlyPlayingNotes.length !== 1 ? 's' : ''}` : 'Inactive'}
+                      {isInstrumentMuted(instrument.channel) 
+                        ? 'Muted' 
+                        : isActive 
+                          ? `Playing ${currentlyPlayingNotes.length} note${currentlyPlayingNotes.length !== 1 ? 's' : ''}` 
+                          : 'Inactive'
+                      }
                     </span>
                   </div>
                   
@@ -796,7 +858,8 @@ export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({
               Total Notes: {instruments.reduce((sum, inst) => sum + inst.noteCount, 0)} •
               Currently Playing: {instruments.filter(inst => 
                 inst.notes.some(note => currentTime >= note.time && currentTime <= note.time + note.duration)
-              ).length}
+              ).length} •
+              Muted: {mutedInstruments.size}
             </div>
           </div>
         </div>
