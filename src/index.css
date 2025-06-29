@@ -2,8 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* React Piano Styles */
-@import 'react-piano/dist/styles.css';
 
 /* Custom overrides for react-piano */
 .ReactPiano__Key--natural {

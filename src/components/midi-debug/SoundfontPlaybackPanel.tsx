@@ -1,7 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { loadSoundFont, MIDI, SpessaSynthProcessor, SpessaSynthSequencer } from 'spessasynth_core';
 import { Play, Pause, Square, Music, Volume2, AlertCircle, CheckCircle, Piano, VolumeX } from 'lucide-react';
 import { getMidiInstrumentName, getInstrumentName, getInstrumentGroup } from '../../utils/midiParser';
+
+// Dynamic import with error handling for spessasynth_core
+let spessasynthCore: any = null;
+let spessasynthLoaded = false;
+
+const loadSpessasynthCore = async (): Promise<boolean> => {
+  if (spessasynthLoaded) return true;
+  
+  try {
+    console.log('🔄 Loading spessasynth_core...');
+    const module = await import('spessasynth_core');
+    spessasynthCore = module;
+    spessasynthLoaded = true;
+    console.log('✅ spessasynth_core loaded successfully');
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to load spessasynth_core:', error);
+    return false;
+  }
+};
 
 export const SoundfontPlaybackPanel = () => {
   const [voiceList, setVoiceList] = useState<string[]>([]);
@@ -13,11 +32,23 @@ export const SoundfontPlaybackPanel = () => {
   const [error, setError] = useState<string | null>(null);
   const [showOnlyUsedChannels, setShowOnlyUsedChannels] = useState(true);
   const [mutedChannels, setMutedChannels] = useState<Set<number>>(new Set());
+  const [spessasynthAvailable, setSpessasynthAvailable] = useState(false);
   const contextRef = useRef<AudioContext | null>(null);
-  const synthRef = useRef<SpessaSynthProcessor | null>(null);
-  const seqRef = useRef<SpessaSynthSequencer | null>(null);
+  const synthRef = useRef<any | null>(null);
+  const seqRef = useRef<any | null>(null);
   const voiceTrackingIntervalRef = useRef<number | null>(null);
   const audioLoopIntervalRef = useRef<number | null>(null);
+
+  // Check spessasynth availability on mount
+  useEffect(() => {
+    loadSpessasynthCore().then(available => {
+      setSpessasynthAvailable(available);
+      if (!available) {
+        setMessage('Spessasynth library not available. Please check your browser compatibility.');
+        setError('WebAssembly module failed to load. This may be due to browser security restrictions or compatibility issues.');
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const initialVoiceList: string[] = [];
@@ -52,6 +83,11 @@ export const SoundfontPlaybackPanel = () => {
       return;
     }
 
+    if (!spessasynthAvailable) {
+      setError('Spessasynth library is not available. Cannot process soundfonts.');
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
@@ -66,11 +102,11 @@ export const SoundfontPlaybackPanel = () => {
 
       const fontBuffer = await files[0].arrayBuffer();
 
-      const synth = new SpessaSynthProcessor(44100);
+      const synth = new spessasynthCore.SpessaSynthProcessor(44100);
       synthRef.current = synth;
-      synth.soundfontManager.reloadManager(loadSoundFont(fontBuffer));
+      synth.soundfontManager.reloadManager(spessasynthCore.loadSoundFont(fontBuffer));
 
-      const seq = new SpessaSynthSequencer(synth);
+      const seq = new spessasynthCore.SpessaSynthSequencer(synth);
       seqRef.current = seq;
       setSequencerReady(true);
 
@@ -113,12 +149,12 @@ export const SoundfontPlaybackPanel = () => {
         playAudio(output, context.destination);
       }, 10);
 
+      setIsLoading(false);
     } catch (error) {
       console.error('Error loading soundfont:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setError(errorMessage);
       setMessage('Error loading soundfont. Please try again.');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -132,7 +168,7 @@ export const SoundfontPlaybackPanel = () => {
       setMessage('Loading MIDI file...');
       
       const file = e.target.files[0];
-      const midi = new MIDI(await file.arrayBuffer());
+      const midi = new spessasynthCore.MIDI(await file.arrayBuffer());
       seqRef.current.loadNewSongList([midi]);
       
       // Parse MIDI to get instrument information
