@@ -1,0 +1,37 @@
+# Lock files (auto-generated, large)
+package-lock.json
+pnpm-lock.yaml
+
+# Large deprecated/experimental components
+src/components/old.tsx
+src/components/MultiplayerTest.tsx
+src/components/MidiTestUI.tsx
+src/components/SoundFontPOC.tsx
+src/components/MusicPlayerDemo.tsx
+
+# Ignore entire public directory and all its contents
+public/
+
+
+# Large utility files (exclude if not actively working on them)
+# Uncomment these if you're not actively working on these specific areas:
+# src/utils/midiParser.ts
+# src/music/MusicPlayer.ts
+# src/music/MidiParser.ts
+# src/game/RenderEngine.ts
+# src/game/GameEngine.ts
+
+# Configuration files (usually don't need AI context)
+tsconfig*.json
+vite.config.ts
+tailwind.config.js
+postcss.config.js
+eslint.config.js
+
+# Build and dependency directories
+node_modules/
+dist/
+build/
+
+# Git directory
+.git/
