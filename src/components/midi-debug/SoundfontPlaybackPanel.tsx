@@ -5,6 +5,7 @@ import { Play, Pause } from 'lucide-react';
 export const SoundfontPlaybackPanel = () => {
   const [voiceList, setVoiceList] = useState<string[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [sequencerReady, setSequencerReady] = useState(false);
   const contextRef = useRef<AudioContext | null>(null);
   const synthRef = useRef<SpessaSynthProcessor | null>(null);
   const seqRef = useRef<SpessaSynthSequencer | null>(null);
@@ -40,6 +41,7 @@ export const SoundfontPlaybackPanel = () => {
 
     const seq = new SpessaSynthSequencer(synth);
     seqRef.current = seq;
+    setSequencerReady(true);
 
     audioLoopIntervalRef.current = window.setInterval(() => {
       const synTime = synth.currentSynthTime;
@@ -79,6 +81,9 @@ export const SoundfontPlaybackPanel = () => {
     }, 10);
 
     voiceTrackingIntervalRef.current = window.setInterval(() => {
+      const newVoiceList: string[] = [];
+      let hasChanges = false;
+
       synth.midiAudioChannels.forEach((c, chanNum) => {
         let text = `Channel ${chanNum + 1}:\n`;
 
@@ -86,12 +91,18 @@ export const SoundfontPlaybackPanel = () => {
           text += `note: ${v.midiNote}\n`;
         });
 
-        setVoiceList(prev => {
-          const newList = [...prev];
-          newList[chanNum] = text;
-          return newList;
-        });
+        newVoiceList[chanNum] = text;
+        
+        // Check if this channel's text has changed
+        if (voiceList[chanNum] !== text) {
+          hasChanges = true;
+        }
       });
+
+      // Only update state if there are actual changes
+      if (hasChanges) {
+        setVoiceList(newVoiceList);
+      }
     }, 100);
   };
 
@@ -131,15 +142,15 @@ export const SoundfontPlaybackPanel = () => {
       <div style={{ marginTop: '10px' }}>
         <button 
           onClick={togglePlayPause}
-          disabled={!seqRef.current}
+          disabled={!sequencerReady}
           style={{
             padding: '8px 16px',
             backgroundColor: isPlaying ? '#ef4444' : '#3b82f6',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            cursor: seqRef.current ? 'pointer' : 'not-allowed',
-            opacity: seqRef.current ? 1 : 0.5
+            cursor: sequencerReady ? 'pointer' : 'not-allowed',
+            opacity: sequencerReady ? 1 : 0.5
           }}
         >
           {isPlaying ? (
