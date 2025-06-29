@@ -130,6 +130,86 @@ const midiPatchNames = [
   "Gunshot"
 ];
 
+// Function to get GM instrument group/category name (no synth needed)
+export const getInstrumentGroup = (program: number, channel?: number): string => {
+  // Special handling for Channel 10 (drums)
+  if (channel === 9) { // Channel 10 (0-indexed)
+    if (program === 0) return "Standard Kit";
+    if (program === 8) return "Room Kit";
+    if (program === 16) return "Power Kit";
+    if (program === 24) return "Electronic Kit";
+    if (program === 25) return "TR-808 Kit";
+    if (program === 32) return "Jazz Kit";
+    if (program === 40) return "Brush Kit";
+    if (program === 48) return "Orchestra Kit";
+    if (program === 56) return "Sound Effects";
+    return `Drum Kit ${program}`;
+  }
+  
+  return midiPatchNames[program] || `Unknown Instrument (${program})`;
+};
+
+// Function to get actual SoundFont preset name from synth
+export const getInstrumentName = (synth: any, program: number, channel?: number): string => {
+  try {
+    console.log('🔍 getInstrumentName called:', { program, channel, hasSynth: !!synth, hasManager: !!synth?.soundfontManager });
+    
+    if (!synth?.soundfontManager) {
+      console.log('❌ No soundfontManager available');
+      return 'Unknown';
+    }
+
+    const bank = 0; // Default bank
+    const isXG = false; // Default to GM
+    
+    console.log('🔍 Getting preset for:', { bank, program, isXG, channel });
+    
+    // Special handling for Channel 10 (drums)
+    if (channel === 9) {
+      const drumBank = 128; // GM2/XG drum bank
+      console.log('🥁 Getting drum preset for bank:', drumBank, 'program:', program);
+      const p = synth.soundfontManager.getPreset(drumBank, program, isXG);
+      console.log('🥁 Drum preset result:', p);
+      if (p?.preset?.presetName) {
+        console.log('✅ Found drum preset name:', p.preset.presetName);
+        return p.preset.presetName;
+      }
+      return 'Unknown Drum Kit';
+    }
+
+    // Get preset for regular instruments
+    const p = synth.soundfontManager.getPreset(bank, program, isXG);
+    console.log('🎹 Preset result:', p);
+    
+    if (p?.preset?.presetName) {
+      console.log('✅ Found preset name:', p.preset.presetName);
+      return p.preset.presetName;
+    }
+
+    // Check if we can get preset list
+    if (synth.soundfontManager.getPresetList) {
+      const presetList = synth.soundfontManager.getPresetList();
+      console.log('📋 Available presets:', presetList);
+      
+      // Try to find matching preset
+      const matchingPreset = presetList.find((preset: any) => 
+        preset.program === program && preset.bank === bank
+      );
+      
+      if (matchingPreset) {
+        console.log('✅ Found matching preset from list:', matchingPreset.presetName);
+        return matchingPreset.presetName;
+      }
+    }
+
+    console.log('❌ No preset found');
+    return 'Unknown';
+  } catch (error) {
+    console.warn('Error getting SoundFont preset name:', error);
+    return 'Unknown';
+  }
+};
+
 // Function to get instrument name (like the professional player)
 export const getMidiInstrumentName = (program: number, channel?: number): string => {
   // Special handling for Channel 10 (drums)
