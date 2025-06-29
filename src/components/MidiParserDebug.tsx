@@ -21,7 +21,7 @@ const AVAILABLE_MIDI_FILES = [
   { path: '/midi/dooms-gate-easy.mid', name: 'Dooms Gate (Easy)', description: 'Dooms Gate melody' }
 ];
 
-export const MidiParserDebug: React.FC<MidiParserDebugProps> = ({ onBack, song }) => {
+export const MidiParserDebug: React.FC<MidiParserDebugProps> = ({ onBack, song: initialSong }) => {
   const [debugState, setDebugState] = useState<DebugState>({
     isLoading: false,
     error: null,
@@ -36,16 +36,21 @@ export const MidiParserDebug: React.FC<MidiParserDebugProps> = ({ onBack, song }
     isPlaying: false
   });
 
+  const [selectedSong, setSelectedSong] = useState(initialSong);
   const midiParser = useRef(MidiParser.getInstance());
   const playbackTimer = useRef<number | null>(null);
 
-  // Get default soundfont from song or use piano-yamaha
-  const getDefaultSoundFontId = (): string => {
-    if (song?.soundFont) {
-      const soundFont = getSoundFontForSong(song);
-      return soundFont.id;
+  // Get soundfont URL from song data
+  const getSoundfontUrl = (): string => {
+    console.log('selectedSong', selectedSong);
+    if (selectedSong) {
+      console.log('selectedSong', selectedSong);
+      const soundFont = getSoundFontForSong(selectedSong);
+      console.log('soundFont', soundFont);
+      return soundFont.url;
     }
-    return 'piano-yamaha';
+    // Default to Equinox Grand Pianos if no song provided
+    return '/soundfonts/Equinox_Grand_Pianos.sf2';
   };
 
   // Load MIDI file
@@ -77,6 +82,13 @@ export const MidiParserDebug: React.FC<MidiParserDebugProps> = ({ onBack, song }
         error: error instanceof Error ? error.message : 'Unknown error'
       }));
     }
+  };
+
+  // Handle file selection with song
+  const handleFileSelect = (file: string, song?: any) => {
+    setDebugState(prev => ({ ...prev, selectedFile: file }));
+    setSelectedSong(song);
+    loadMidiFile(file);
   };
 
   // Auto-load first file on mount
@@ -182,10 +194,7 @@ export const MidiParserDebug: React.FC<MidiParserDebugProps> = ({ onBack, song }
           <FileSelectionPanel
             selectedFile={debugState.selectedFile}
             isLoading={debugState.isLoading}
-            onFileSelect={(file) => {
-              setDebugState(prev => ({ ...prev, selectedFile: file }));
-              loadMidiFile(file);
-            }}
+            onFileSelect={handleFileSelect}
             onReload={() => loadMidiFile(debugState.selectedFile)}
           />
 
@@ -196,11 +205,9 @@ export const MidiParserDebug: React.FC<MidiParserDebugProps> = ({ onBack, song }
             onTogglePlayback={togglePlayback}
           />
 
-          <SoundfontPlaybackPanel
-            midiData={debugState.midiData}
-            filteredNotes={filteredNotes}
-            defaultSoundFontId={getDefaultSoundFontId()}
-            selectedMidiFile={debugState.selectedFile}
+          <SoundfontPlaybackPanel 
+            soundfontUrl={getSoundfontUrl()}
+            midiUrl={debugState.selectedFile}
           />
         </div>
 

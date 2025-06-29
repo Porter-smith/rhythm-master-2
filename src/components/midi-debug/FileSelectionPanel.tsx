@@ -1,19 +1,29 @@
 import React from 'react';
 import { FileMusic, RefreshCw } from 'lucide-react';
+import { getMidiSongs } from '../../data/songs';
+import { MidiSong } from '../../types/music';
 
 interface FileSelectionPanelProps {
   selectedFile: string;
   isLoading: boolean;
-  onFileSelect: (file: string) => void;
+  onFileSelect: (file: string, song?: MidiSong) => void;
   onReload: () => void;
 }
 
-const AVAILABLE_MIDI_FILES = [
-  { path: '/midi/twinkle-easy.midi', name: 'Twinkle Twinkle (Easy)', description: 'Simple melody for testing basic parsing' },
-  { path: '/midi/dooms-gate-easy.mid', name: 'Dooms Gate (Easy)', description: 'Dooms Gate melody' },
-  { path: '/midi/spearsofjustice-easy.mid', name: 'Spear of Justice (Easy)', description: 'Spear of Justice melody' },
-  { path: '/midi/test-drive-easy.mid', name: 'Test Drive (Easy)', description: 'Test Drive melody' }
-];
+// Get available MIDI songs and map them to their easy difficulty files
+const getAvailableMidiFiles = () => {
+  const midiSongs = getMidiSongs();
+  return midiSongs
+    .filter(song => song.difficulties.includes('easy') && song.midiFiles.easy)
+    .map(song => ({
+      path: song.midiFiles.easy!,
+      name: song.title,
+      description: `${song.artist} - ${song.duration}`,
+      song: song
+    }));
+};
+
+const AVAILABLE_MIDI_FILES = getAvailableMidiFiles();
 
 export const FileSelectionPanel: React.FC<FileSelectionPanelProps> = ({ 
   selectedFile, 
@@ -31,7 +41,7 @@ export const FileSelectionPanel: React.FC<FileSelectionPanelProps> = ({
       {AVAILABLE_MIDI_FILES.map((file) => (
         <button
           key={file.path}
-          onClick={() => onFileSelect(file.path)}
+          onClick={() => onFileSelect(file.path, file.song)}
           className={`w-full p-3 rounded-lg text-left transition-all duration-200 ${
             selectedFile === file.path
               ? 'bg-orange-500/30 border-2 border-orange-400'
@@ -41,6 +51,9 @@ export const FileSelectionPanel: React.FC<FileSelectionPanelProps> = ({
           <div className="font-semibold text-white">{file.name}</div>
           <div className="text-sm text-white/60">{file.description}</div>
           <div className="text-xs text-white/40 font-mono">{file.path}</div>
+          <div className="text-xs text-green-400 mt-1">
+            SoundFont: {file.song.soundFont ? file.song.soundFont.split('/').pop() : 'Equinox Grand Pianos (default)'}
+          </div>
         </button>
       ))}
     </div>
