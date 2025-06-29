@@ -134,7 +134,10 @@ const midiPatchNames = [
 export const getMidiInstrumentName = (program: number, channel?: number): string => {
   // Special handling for Channel 10 (drums)
   if (channel === 9) { // Channel 10 (0-indexed)
-    // Channel 10 is always drums, regardless of program number
+    // TODO: This should be dynamically loaded from SoundFont files instead of hardcoded
+    // Following SpessaSynth's approach: SoundFont files contain drum kit names in their preset definitions
+    // The parser should extract presetName from the SoundFont's preset header chunk (PHDR)
+    // For now, using hardcoded General MIDI drum kit names as fallback
     if (program === 0) return "Standard Kit";
     if (program === 8) return "Room Kit";
     if (program === 16) return "Power Kit";
@@ -147,7 +150,48 @@ export const getMidiInstrumentName = (program: number, channel?: number): string
     return `Drum Kit ${program}`;
   }
   
-  // Use General MIDI names for other channels
+  // TODO: This should also support grouping multiple SoundFont presets under GM categories
+  // Example: Multiple "Steinway D" variations (000 000, 001 000) should be grouped under "Acoustic Grand Piano"
+  // The UI should show:
+  //   Acoustic Grand Piano
+  //    000 000 Steinway D
+  //    001 000 Steinway D L/R
+  // Instead of just showing individual preset names
+  // 
+  // How SpessaSynth does it:
+  // 1. Group presets by program number (GM instrument type)
+  // 2. Show GM category name as header (e.g., "Acoustic Grand Piano" for program 0)
+  // 3. List all presets with same program number from different banks underneath
+  // 4. Multiple banks can have same program number, creating variations of same instrument type
+  // 
+  // Example: Both "000 000 Steinway D" and "001 000 Steinway D L/R" have program=0,
+  // so they're grouped under "Acoustic Grand Piano" (GM program 0)
+  //
+  // EXACT GROUPING LOGIC (from synthui_selector.js):
+  // Input: Array of {name: string, bank: number, program: number} presets
+  // 1. Sort presets by program number first, then by bank number
+  // 2. For each unique program number, create a group:
+  //    - Header: GM instrument name (e.g., "Acoustic Grand Piano" for program 0)
+  //    - Sub-items: All presets with that program number, showing "bank program presetName"
+  // 3. Display structure:
+  //    Acoustic Grand Piano          // GM category header
+  //      000 000 Steinway D         // Bank 0, Program 0, Preset name
+  //      001 000 Steinway D L/R     // Bank 1, Program 0, Preset name
+  //    Bright Acoustic Piano        // GM category header (program 1)
+  //      000 001 Bright Piano       // Bank 0, Program 1, Preset name
+  //      001 001 Rhodes Piano       // Bank 1, Program 1, Preset name
+  //
+  // DRUMS ARE HANDLED DIFFERENTLY:
+  // - Drums are always on Channel 10 (index 9) regardless of program number
+  // - Drum presets are identified by bank=128 (GM2/XG convention)
+  // - Each program number represents a different drum kit (Standard, Room, Power, etc.)
+  // - Drum presets are shown in a separate "percussionList" in SpessaSynth
+  // - No grouping under GM categories - each drum kit is its own preset
+  //
+  // Reference SpessaSynth files:
+  // https://github.com/spessasus/SpessaSynth/blob/master/src/website/js/synthesizer_ui/methods/synthui_selector.js#L1
+  // - https://github.com/spessasus/spessasynth_core/blob/5e9d4d46de2c9165134dbbc741c9db6b3fac7d1f/src/synthetizer/audio_engine/engine_components/soundfont_manager.js (preset list generation)
+  // - https://github.com/spessasus/spessasynth_core/blob/5e9d4d46de2c9165134dbbc741c9db6b3fac7d1f/src/synthetizer/audio_engine/engine_methods/soundfont_management/update_preset_list.js (preset list events)
   return midiPatchNames[program] || `Unknown Instrument (${program})`;
 };
 
