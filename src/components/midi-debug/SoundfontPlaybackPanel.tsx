@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { loadSoundFont, MIDI, SpessaSynthProcessor, SpessaSynthSequencer } from 'spessasynth_core';
-import { Play, Pause, Square, Music, Volume2, AlertCircle, CheckCircle, Piano } from 'lucide-react';
+import { Play, Pause, Square, Music, Volume2, AlertCircle, CheckCircle, Piano, VolumeX } from 'lucide-react';
 import { getMidiInstrumentName, getInstrumentName, getInstrumentGroup } from '../../utils/midiParser';
 
 export const SoundfontPlaybackPanel = () => {
@@ -12,6 +12,7 @@ export const SoundfontPlaybackPanel = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOnlyUsedChannels, setShowOnlyUsedChannels] = useState(true);
+  const [mutedChannels, setMutedChannels] = useState<Set<number>>(new Set());
   const contextRef = useRef<AudioContext | null>(null);
   const synthRef = useRef<SpessaSynthProcessor | null>(null);
   const seqRef = useRef<SpessaSynthSequencer | null>(null);
@@ -331,6 +332,29 @@ export const SoundfontPlaybackPanel = () => {
     setVoiceList(preservedVoiceList);
   };
 
+  const toggleMuteChannel = (channelNum: number) => {
+    const newMutedChannels = new Set(mutedChannels);
+    if (newMutedChannels.has(channelNum)) {
+      newMutedChannels.delete(channelNum);
+    } else {
+      newMutedChannels.add(channelNum);
+    }
+    setMutedChannels(newMutedChannels);
+    
+    // Apply mute to the synthesizer if available
+    if (synthRef.current && synthRef.current.midiAudioChannels[channelNum]) {
+      const isMuted = newMutedChannels.has(channelNum);
+      try {
+        // Call muteChannel on the individual MidiAudioChannel object
+        synthRef.current.midiAudioChannels[channelNum].muteChannel(isMuted);
+        console.log(`Channel ${channelNum + 1} ${isMuted ? 'muted' : 'unmuted'}`);
+      } catch (error) {
+        console.warn('Mute function error:', error);
+        console.log(`Channel ${channelNum + 1} ${isMuted ? 'muted' : 'unmuted'} (visual only)`);
+      }
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* SoundFont Upload */}
@@ -512,7 +536,7 @@ export const SoundfontPlaybackPanel = () => {
               return (
                 <div key={channelNum} className={`bg-white/5 rounded-lg p-4 border transition-all duration-200 ${
                   isActive ? 'border-green-400/50 bg-green-400/10' : 'border-white/10'
-                }`}>
+                } ${mutedChannels.has(channelNum) ? 'opacity-50' : ''}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center space-x-3">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-200 ${
@@ -529,9 +553,22 @@ export const SoundfontPlaybackPanel = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-white font-mono text-sm">{playingNotes.length}</div>
-                      <div className="text-white/60 text-xs">active notes</div>
+                    <div className="flex items-center space-x-3">
+                      <button
+                        onClick={() => toggleMuteChannel(channelNum)}
+                        className={`p-2 rounded-lg transition-all duration-200 ${
+                          mutedChannels.has(channelNum)
+                            ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                            : 'bg-white/10 text-white/70 hover:bg-white/20'
+                        }`}
+                        title={mutedChannels.has(channelNum) ? 'Unmute channel' : 'Mute channel'}
+                      >
+                        <VolumeX className="w-4 h-4" />
+                      </button>
+                      <div className="text-right">
+                        <div className="text-white font-mono text-sm">{playingNotes.length}</div>
+                        <div className="text-white/60 text-xs">active notes</div>
+                      </div>
                     </div>
                   </div>
                   
@@ -548,6 +585,7 @@ export const SoundfontPlaybackPanel = () => {
                         : 'text-white/40'
                     }`}>
                       {isActive ? `Playing ${playingNotes.length} note${playingNotes.length !== 1 ? 's' : ''}` : 'Inactive'}
+                      {mutedChannels.has(channelNum) && ' (Muted)'}
                     </span>
                   </div>
                   

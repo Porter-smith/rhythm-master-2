@@ -1,6 +1,12 @@
 declare module 'spessasynth_core' {
   export function loadSoundFont(buffer: ArrayBuffer): any;
 
+  export interface PresetInfo {
+    presetName: string;
+    program: number;
+    bank: number;
+  }
+
   export class MIDI {
     constructor(buffer: ArrayBuffer);
   }
@@ -10,11 +16,14 @@ declare module 'spessasynth_core' {
     currentSynthTime: number;
     soundfontManager: {
       reloadManager(soundFont: any): void;
+      getPresetList(): PresetInfo[];
+      presetList: PresetInfo[];
     };
     midiAudioChannels: Array<{
       voices: Array<{
         midiNote: number;
       }>;
+      muteChannel(isMuted: boolean): void;
     }>;
     renderAudio(output: Float32Array[], reverb: Float32Array[], chorus: Float32Array[]): void;
   }
