@@ -80,30 +80,7 @@ export const SoundfontPlaybackPanel = () => {
       playAudio(output, context.destination);
     }, 10);
 
-    voiceTrackingIntervalRef.current = window.setInterval(() => {
-      const newVoiceList: string[] = [];
-      let hasChanges = false;
-
-      synth.midiAudioChannels.forEach((c, chanNum) => {
-        let text = `Channel ${chanNum + 1}:\n`;
-
-        c.voices.forEach(v => {
-          text += `note: ${v.midiNote}\n`;
-        });
-
-        newVoiceList[chanNum] = text;
-        
-        // Check if this channel's text has changed
-        if (voiceList[chanNum] !== text) {
-          hasChanges = true;
-        }
-      });
-
-      // Only update state if there are actual changes
-      if (hasChanges) {
-        setVoiceList(newVoiceList);
-      }
-    }, 100);
+    // Voice tracking will be started when play is pressed
   };
 
   const handleMidiUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -125,9 +102,47 @@ export const SoundfontPlaybackPanel = () => {
     if (isPlaying) {
       seqRef.current.pause();
       setIsPlaying(false);
+      // Stop voice tracking interval when paused
+      if (voiceTrackingIntervalRef.current) {
+        clearInterval(voiceTrackingIntervalRef.current);
+        voiceTrackingIntervalRef.current = null;
+      }
+      // Clear voice list when paused
+      const emptyVoiceList: string[] = [];
+      for (let i = 0; i < 16; i++) {
+        emptyVoiceList.push(`Channel ${i + 1}:\n`);
+      }
+      setVoiceList(emptyVoiceList);
     } else {
       seqRef.current.play();
       setIsPlaying(true);
+      // Restart voice tracking interval when playing
+      if (synthRef.current && !voiceTrackingIntervalRef.current) {
+        voiceTrackingIntervalRef.current = window.setInterval(() => {
+          const newVoiceList: string[] = [];
+          let hasChanges = false;
+
+          synthRef.current!.midiAudioChannels.forEach((c, chanNum) => {
+            let text = `Channel ${chanNum + 1}:\n`;
+
+            c.voices.forEach(v => {
+              text += `note: ${v.midiNote}\n`;
+            });
+
+            newVoiceList[chanNum] = text;
+            
+            // Check if this channel's text has changed
+            if (voiceList[chanNum] !== text) {
+              hasChanges = true;
+            }
+          });
+
+          // Only update state if there are actual changes
+          if (hasChanges) {
+            setVoiceList(newVoiceList);
+          }
+        }, 100);
+      }
     }
   };
 
