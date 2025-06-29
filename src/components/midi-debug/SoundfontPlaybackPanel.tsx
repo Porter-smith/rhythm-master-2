@@ -5,52 +5,157 @@ import { MidiNote } from './types';
 import { getAllSoundFonts } from '../../data/soundfonts';
 import { Synthetizer, Sequencer } from 'spessasynth_lib';
 
-// MIDI instrument names
-const getMidiInstrumentName = (programNumber: number): string => {
-  const instruments = [
-    // Piano
-    'Acoustic Grand Piano', 'Bright Acoustic Piano', 'Electric Grand Piano', 'Honky-tonk Piano',
-    'Electric Piano 1', 'Electric Piano 2', 'Harpsichord', 'Clavi',
-    // Chromatic Percussion
-    'Celesta', 'Glockenspiel', 'Music Box', 'Vibraphone', 'Marimba', 'Xylophone', 'Tubular Bells', 'Dulcimer',
-    // Organ
-    'Drawbar Organ', 'Percussive Organ', 'Rock Organ', 'Church Organ', 'Reed Organ', 'Accordion', 'Harmonica', 'Tango Accordion',
-    // Guitar
-    'Acoustic Guitar (nylon)', 'Acoustic Guitar (steel)', 'Electric Guitar (jazz)', 'Electric Guitar (clean)',
-    'Electric Guitar (muted)', 'Overdriven Guitar', 'Distortion Guitar', 'Guitar harmonics',
-    // Bass
-    'Acoustic Bass', 'Electric Bass (finger)', 'Electric Bass (pick)', 'Fretless Bass',
-    'Slap Bass 1', 'Slap Bass 2', 'Synth Bass 1', 'Synth Bass 2',
-    // Strings
-    'Violin', 'Viola', 'Cello', 'Contrabass', 'Tremolo Strings', 'Pizzicato Strings',
-    'Orchestral Harp', 'Timpani',
-    // Ensemble
-    'String Ensemble 1', 'String Ensemble 2', 'Synth Strings 1', 'Synth Strings 2',
-    'Choir Aahs', 'Voice Oohs', 'Synth Voice', 'Orchestra Hit',
-    // Brass
-    'Trumpet', 'Trombone', 'Tuba', 'Muted Trumpet', 'French Horn', 'Brass Section', 'Synth Brass 1', 'Synth Brass 2',
-    // Reed
-    'Soprano Sax', 'Alto Sax', 'Tenor Sax', 'Baritone Sax', 'Oboe', 'English Horn', 'Bassoon', 'Clarinet',
-    // Pipe
-    'Piccolo', 'Flute', 'Recorder', 'Pan Flute', 'Blown Bottle', 'Shakuhachi', 'Whistle', 'Ocarina',
-    // Synth Lead
-    'Lead 1 (square)', 'Lead 2 (sawtooth)', 'Lead 3 (calliope)', 'Lead 4 (chiff)',
-    'Lead 5 (charang)', 'Lead 6 (voice)', 'Lead 7 (fifths)', 'Lead 8 (bass + lead)',
-    // Synth Pad
-    'Pad 1 (new age)', 'Pad 2 (warm)', 'Pad 3 (polysynth)', 'Pad 4 (choir)',
-    'Pad 5 (bowed)', 'Pad 6 (metallic)', 'Pad 7 (halo)', 'Pad 8 (sweep)',
-    // Synth Effects
-    'FX 1 (rain)', 'FX 2 (soundtrack)', 'FX 3 (crystal)', 'FX 4 (atmosphere)',
-    'FX 5 (brightness)', 'FX 6 (goblins)', 'FX 7 (echoes)', 'FX 8 (sci-fi)',
-    // Ethnic
-    'Sitar', 'Banjo', 'Shamisen', 'Koto', 'Kalimba', 'Bag pipe', 'Fiddle', 'Shanai',
-    // Percussive
-    'Tinkle Bell', 'Agogo', 'Steel Drums', 'Woodblock', 'Taiko Drum', 'Melodic Tom', 'Synth Drum', 'Reverse Cymbal',
-    // Sound Effects
-    'Guitar Fret Noise', 'Breath Noise', 'Seashore', 'Bird Tweet', 'Telephone Ring', 'Helicopter', 'Applause', 'Gunshot'
-  ];
+// MIDI instrument names (General MIDI standard)
+const midiPatchNames = [
+  "Acoustic Grand Piano",
+  "Bright Acoustic Piano", 
+  "Electric Grand Piano",
+  "Honky-tonk Piano",
+  "Electric Piano 1",
+  "Electric Piano 2",
+  "Harpsichord",
+  "Clavi",
+  "Celesta",
+  "Glockenspiel",
+  "Music Box",
+  "Vibraphone",
+  "Marimba",
+  "Xylophone",
+  "Tubular Bells",
+  "Dulcimer",
+  "Drawbar Organ",
+  "Percussive Organ",
+  "Rock Organ",
+  "Church Organ",
+  "Reed Organ",
+  "Accordion",
+  "Harmonica",
+  "Tango Accordion",
+  "Acoustic Guitar (nylon)",
+  "Acoustic Guitar (steel)",
+  "Electric Guitar (jazz)",
+  "Electric Guitar (clean)",
+  "Electric Guitar (muted)",
+  "Overdriven Guitar",
+  "Distortion Guitar",
+  "Guitar Harmonics",
+  "Acoustic Bass",
+  "Electric Bass (finger)",
+  "Electric Bass (pick)",
+  "Fretless Bass",
+  "Slap Bass 1",
+  "Slap Bass 2",
+  "Synth Bass 1",
+  "Synth Bass 2",
+  "Violin",
+  "Viola",
+  "Cello",
+  "Contrabass",
+  "Tremolo Strings",
+  "Pizzicato Strings",
+  "Orchestral Harp",
+  "Timpani",
+  "String Ensemble 1",
+  "String Ensemble 2",
+  "Synth Strings 1",
+  "Synth Strings 2",
+  "Choir Aahs",
+  "VoiceGroup Oohs",
+  "Synth Choir",
+  "Orchestra Hit",
+  "Trumpet",
+  "Trombone",
+  "Tuba",
+  "Muted Trumpet",
+  "French Horn",
+  "Brass Section",
+  "Synth Brass 1",
+  "Synth Brass 2",
+  "Soprano Sax",
+  "Alto Sax",
+  "Tenor Sax",
+  "Baritone Sax",
+  "Oboe",
+  "English Horn",
+  "Bassoon",
+  "Clarinet",
+  "Piccolo",
+  "Flute",
+  "Recorder",
+  "Pan Flute",
+  "Blown Bottle",
+  "Shakuhachi",
+  "Whistle",
+  "Ocarina",
+  "Lead 1 (square)",
+  "Lead 2 (sawtooth)",
+  "Lead 3 (calliope)",
+  "Lead 4 (chiff)",
+  "Lead 5 (charang)",
+  "Lead 6 (voice)",
+  "Lead 7 (fifths)",
+  "Lead 8 (bass + lead)",
+  "Pad 1 (new age)",
+  "Pad 2 (warm)",
+  "Pad 3 (polysynth)",
+  "Pad 4 (choir)",
+  "Pad 5 (bowed)",
+  "Pad 6 (metallic)",
+  "Pad 7 (halo)",
+  "Pad 8 (sweep)",
+  "FX 1 (rain)",
+  "FX 2 (soundtrack)",
+  "FX 3 (crystal)",
+  "FX 4 (atmosphere)",
+  "FX 5 (brightness)",
+  "FX 6 (goblins)",
+  "FX 7 (echoes)",
+  "FX 8 (sci-fi)",
+  "Sitar",
+  "Banjo",
+  "Shamisen",
+  "Koto",
+  "Kalimba",
+  "Bagpipe",
+  "Fiddle",
+  "Shanai",
+  "Tinkle Bell",
+  "Agogo",
+  "Steel Drums",
+  "Woodblock",
+  "Taiko Drum",
+  "Melodic Tom",
+  "Synth Drum",
+  "Reverse Cymbal",
+  "Guitar Fret Noise",
+  "Breath Noise",
+  "Seashore",
+  "Bird Tweet",
+  "Telephone Ring",
+  "Attack Helicopter",
+  "Applause",
+  "Gunshot"
+];
+
+// Function to get instrument name (like the professional player)
+const getInstrumentName = (program: number, channel?: number): string => {
+  // Special handling for Channel 10 (drums)
+  if (channel === 9) { // Channel 10 (0-indexed)
+    // Channel 10 is always drums, regardless of program number
+    if (program === 0) return "Standard Kit";
+    if (program === 8) return "Room Kit";
+    if (program === 16) return "Power Kit";
+    if (program === 24) return "Electronic Kit";
+    if (program === 25) return "TR-808 Kit";
+    if (program === 32) return "Jazz Kit";
+    if (program === 40) return "Brush Kit";
+    if (program === 48) return "Orchestra Kit";
+    if (program === 56) return "Sound Effects";
+    return `Drum Kit ${program}`;
+  }
   
-  return instruments[programNumber] || `Unknown Instrument (${programNumber})`;
+  // Use General MIDI names for other channels
+  return midiPatchNames[program] || `Unknown Instrument (${program})`;
 };
 
 interface NoteEvent {
@@ -170,7 +275,7 @@ export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({
           if (messageType === 0xC0) {
             // Program Change (instrument selection)
             const instrument = read8();
-            const instrumentName = getMidiInstrumentName(instrument);
+            const instrumentName = getInstrumentName(instrument, channel);
             
             if (!instruments.has(channel)) {
               instruments.set(channel, {
@@ -214,7 +319,7 @@ export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({
                 instruments.set(channel, {
                   channel,
                   instrument: 0,
-                  name: getMidiInstrumentName(0),
+                  name: getInstrumentName(0, channel),
                   trackName: trackName,
                   noteCount: 0,
                   notes: []
@@ -275,6 +380,15 @@ export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({
           instrument.notes.sort((a, b) => a.time - b.time);
         }
       });
+
+      // Log summary of what we found
+      console.log('=== MIDI Instrument Parsing Summary ===');
+      instruments.forEach((instrument) => {
+        const gmName = getInstrumentName(instrument.instrument, instrument.channel);
+        const isCustom = instrument.name !== gmName;
+        console.log(`Channel ${instrument.channel + 1}: ${instrument.name} ${isCustom ? '(CUSTOM)' : '(GM)'} [Program ${instrument.instrument}]`);
+      });
+      console.log('=====================================');
 
       return Array.from(instruments.values()).sort((a, b) => a.channel - b.channel);
     } catch (error) {
@@ -649,6 +763,19 @@ export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({
         </div>
       </div>
 
+      {/* Info about instrument names */}
+      <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-4">
+        <div className="text-sm text-blue-300">
+          <div className="font-medium mb-1">Instrument Names:</div>
+          <div className="text-blue-200/80">
+            • <span className="text-white">Main name</span> = Instrument name based on program number and channel
+            • <span className="text-white/40">"GM Category"</span> = General MIDI standard name (when different)
+            • <span className="text-yellow-400">Channel 10</span> = Always drums/percussion (special MIDI standard)
+            • Shows GM category only when it differs from the actual name
+          </div>
+        </div>
+      </div>
+
       {/* Playback Controls */}
       {!isLoading && (
         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
@@ -769,6 +896,11 @@ export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({
                         <div className="text-white/60 text-sm">
                           Channel {instrument.channel + 1} • Program {instrument.instrument}
                         </div>
+                        {instrument.name !== getInstrumentName(instrument.instrument, instrument.channel) && (
+                          <div className="text-white/40 text-xs mt-1">
+                            GM Category: {getInstrumentName(instrument.instrument, instrument.channel)}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">

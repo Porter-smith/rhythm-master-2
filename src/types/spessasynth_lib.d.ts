@@ -1,6 +1,14 @@
 declare module 'spessasynth_lib' {
+  interface PresetInfo {
+    presetName: string;
+    program: number;
+    bank: number;
+  }
+
   export class Synthetizer {
     constructor(destination: AudioNode, soundFontBuffer: ArrayBuffer);
+    muteChannel(channel: number, isMuted: boolean): void;
+    getPresetList(): PresetInfo[];
   }
   
   export class Sequencer {
