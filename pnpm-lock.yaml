@@ -1378,6 +1378,9 @@ packages:
   spessasynth_core@3.26.34:
     resolution: {integrity: sha512-6zaapLsv9o1h6niQ7Qsg0hjpgBrbWoBJhSxWWrsY4iAH48kOaq9cRWSD5lTKP+YixqeUnErbOWNXK5ywy6a13g==}
 
+  spessasynth_core@3.26.40:
+    resolution: {integrity: sha512-BDa+L5v6IpxQk0T7elYCn7JmUkr8K+a5h4yVgloYQs5GWvEsXu9zog+jSqnekAPIOCwNUug5kFB9FXfMWwszbw==}
+
   spessasynth_lib@3.26.31:
     resolution: {integrity: sha512-L4HYB47P3SBUAUJYUBurmrcwSYuQr5kYRp+UOcKW3e+gMACkotNXxwtWx2dOT80Hg2D5VY+ysiSIkRUXVnhbtg==}
 
@@ -2838,9 +2841,11 @@ snapshots:
 
   spessasynth_core@3.26.34: {}
 
+  spessasynth_core@3.26.40: {}
+
   spessasynth_lib@3.26.31:
     dependencies:
-      spessasynth_core: 3.26.34
+      spessasynth_core: 3.26.40
 
   standardized-audio-context@25.3.77:
     dependencies:

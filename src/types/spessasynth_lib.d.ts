@@ -5,10 +5,17 @@ declare module 'spessasynth_lib' {
     bank: number;
   }
 
+  interface MidiChannel {
+    voices: Array<{
+      midiNote: number;
+    }>;
+  }
+
   export class Synthetizer {
     constructor(destination: AudioNode, soundFontBuffer: ArrayBuffer);
     muteChannel(channel: number, isMuted: boolean): void;
-    getPresetList(): PresetInfo[];
+    presetList: PresetInfo[];
+    midiAudioChannels: MidiChannel[];
   }
   
   export class Sequencer {
