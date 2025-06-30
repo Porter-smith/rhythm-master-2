@@ -1,4 +1,4 @@
-## Demo Video
+## Demo
 [![Rhythm Master 2 Demo](https://img.youtube.com/vi/FLB71foJSgk/maxresdefault.jpg)](https://www.youtube.com/shorts/FLB71foJSgk)
 > Click the image above to watch the demo!
 
