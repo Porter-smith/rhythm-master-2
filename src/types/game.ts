@@ -9,14 +9,13 @@ export interface Song {
   title: string;
   artist: string;
   duration: string;
-  difficulties: Array<'easy' | 'medium' | 'hard'>;
+  difficulties: ('easy' | 'medium' | 'hard')[];
   bpm: number;
   format: 'custom' | 'midi';
   notes: {
-    easy?: Note[];
-    medium?: Note[];
-    hard?: Note[];
+    [key: string]: Note[];
   };
+  overallDifficulty?: number; // 1-10, affects hit timing windows (1 = easiest, 10 = hardest)
 }
 
 export interface GameScore {
@@ -30,6 +29,25 @@ export interface GameScore {
     miss: number;
   };
   grade: string;
+  hitTimings: number[]; // Array of hit timings in milliseconds (negative = early, positive = late)
+  overallDifficulty: number; // The OD value that was used
+  hitWindows: {
+    perfect: number;
+    great: number;
+    good: number;
+  }; // The actual timing windows used based on OD
+}
+
+export interface GameNote {
+  id: string;
+  time: number;
+  pitch: number;
+  duration: number;
+  velocity?: number;
+  channel?: number;
+  isHit?: boolean;
+  isMissed?: boolean;
+  isActive?: boolean;
 }
 
 export type GameState = 'menu' | 'songSelection' | 'gameplay' | 'settings' | 'score' | 'calibration' | 'musicPlayer' | 'smplrPlayer' | 'midiDebug' | 'multiplayerTest' | 'soundFontPOC';

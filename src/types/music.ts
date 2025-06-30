@@ -23,6 +23,7 @@ export interface CustomSong {
     medium?: CustomNote[];
     hard?: CustomNote[];
   };
+  overallDifficulty?: number; // 1-10, affects hit timing windows (1 = easiest, 10 = hardest)
 }
 
 // MIDI format support with separate files per difficulty
@@ -58,6 +59,7 @@ export interface MidiSong {
     medium?: MidiNote[];
     hard?: MidiNote[];
   };
+  overallDifficulty?: number; // 1-10, affects hit timing windows (1 = easiest, 10 = hardest)
 }
 
 // Union type for both formats

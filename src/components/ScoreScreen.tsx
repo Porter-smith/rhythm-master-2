@@ -98,38 +98,125 @@ export const ScoreScreen: React.FC<ScoreScreenProps> = ({
                   {totalNotes - score.hitStats.miss}/{totalNotes}
                 </span>
               </div>
-              
-              <div className="space-y-2 pt-4 border-t border-white/20">
+
+              {/* Overall Difficulty Display */}
+              <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/20">
+                <span className="text-white/70">Overall Difficulty (OD)</span>
+                <span className="text-xl font-bold text-white">{score.overallDifficulty || 5}</span>
+              </div>
+
+              {/* Hit Stats with Dynamic Windows */}
+              <div className="space-y-2 mt-4">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 bg-green-400 rounded-full"></div>
                     <span className="text-white/70">Perfect</span>
+                    <span className="text-xs text-white/50 ml-2">(±{score.hitWindows?.perfect || 25}ms)</span>
                   </div>
                   <span className="text-white font-semibold">{score.hitStats.perfect}</span>
                 </div>
-                
+
                 <div className="flex justify-between items-center">
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 bg-blue-400 rounded-full"></div>
                     <span className="text-white/70">Great</span>
+                    <span className="text-xs text-white/50 ml-2">(±{score.hitWindows?.great || 50}ms)</span>
                   </div>
                   <span className="text-white font-semibold">{score.hitStats.great}</span>
                 </div>
-                
+
                 <div className="flex justify-between items-center">
                   <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-orange-400 rounded-full"></div>
+                    <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
                     <span className="text-white/70">Good</span>
+                    <span className="text-xs text-white/50 ml-2">(±{score.hitWindows?.good || 200}ms)</span>
                   </div>
                   <span className="text-white font-semibold">{score.hitStats.good}</span>
                 </div>
-                
+
                 <div className="flex justify-between items-center">
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 bg-red-400 rounded-full"></div>
                     <span className="text-white/70">Miss</span>
+                    <span className="text-xs text-white/50 ml-2">(&gt;{score.hitWindows?.good || 200}ms)</span>
                   </div>
                   <span className="text-white font-semibold">{score.hitStats.miss}</span>
+                </div>
+              </div>
+
+              {/* Hit Windows Info Box
+              <div className="mt-4 p-3 bg-white/5 rounded-lg">
+                <h3 className="text-sm font-semibold text-white/90 mb-2">Hit Windows (OD {score.overallDifficulty || 5})</h3>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-green-400">Perfect</span>
+                    <span className="text-white/70">Within ±{score.hitWindows?.perfect || 25}ms</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-400">Great</span>
+                    <span className="text-white/70">Within ±{score.hitWindows?.great || 50}ms</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-yellow-400">Good</span>
+                    <span className="text-white/70">Within ±{score.hitWindows?.good || 200}ms</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-red-400">Miss</span>
+                    <span className="text-white/70">Beyond ±{score.hitWindows?.good || 200}ms</span>
+                  </div>
+                </div>
+              </div> */}
+
+              {/* Timing Distribution */}
+              <div className="mt-6 pt-4 border-t border-white/20">
+                <h3 className="text-lg font-bold text-white mb-3">Timing Distribution</h3>
+                <div className="relative h-24 bg-white/5 rounded-lg overflow-hidden">
+                  {/* Center line */}
+                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/30"></div>
+                  
+                  {/* Hit windows */}
+                  <div className="absolute left-1/2 top-0 bottom-0 w-[200px] -ml-[100px] bg-yellow-400/10"></div>
+                  <div className="absolute left-1/2 top-0 bottom-0 w-[100px] -ml-[50px] bg-blue-400/10"></div>
+                  <div className="absolute left-1/2 top-0 bottom-0 w-[50px] -ml-[25px] bg-green-400/10"></div>
+
+                  {/* Hit markers */}
+                  {score.hitTimings.map((timing, index) => {
+                    // Convert timing to pixel position
+                    const maxWidth = 200; // ±200ms range
+                    const position = (timing / maxWidth) * 50; // Scale to percentage
+                    const color = Math.abs(timing) <= score.hitWindows.perfect ? 'bg-green-400' :
+                                Math.abs(timing) <= score.hitWindows.great ? 'bg-blue-400' :
+                                Math.abs(timing) <= score.hitWindows.good ? 'bg-yellow-400' :
+                                'bg-red-400';
+                    
+                    return (
+                      <div
+                        key={index}
+                        className={`absolute w-1 h-4 ${color} rounded-full transition-all duration-300`}
+                        style={{
+                          left: `calc(50% + ${position}%)`,
+                          top: `${(index * 20) + 10}%`,
+                        }}
+                      />
+                    );
+                  })}
+
+                  {/* Axis labels */}
+                  <div className="absolute bottom-0 left-0 right-0 flex justify-between px-4 text-xs text-white/50">
+                    <span>-{score.hitWindows.good}ms</span>
+                    <span>0ms</span>
+                    <span>+{score.hitWindows.good}ms</span>
+                  </div>
+                </div>
+
+                {/* Average and Standard Deviation */}
+                <div className="mt-2 text-sm text-white/70">
+                  <div>Average: {score.hitTimings.length > 0 ? 
+                    (score.hitTimings.reduce((a, b) => a + b, 0) / score.hitTimings.length).toFixed(1) 
+                    : '0.0'}ms</div>
+                  <div>Standard Deviation: {score.hitTimings.length > 0 ? 
+                    Math.sqrt(score.hitTimings.reduce((a, b) => a + b * b, 0) / score.hitTimings.length).toFixed(1)
+                    : '0.0'}ms</div>
                 </div>
               </div>
             </div>

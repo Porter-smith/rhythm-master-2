@@ -76,6 +76,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [showDebug, setShowDebug] = useState(false);
   const [loadedSong, setLoadedSong] = useState<Song | null>(null);
   const [filteredNotes, setFilteredNotes] = useState<FilteredNote[]>([]);
+  const [hitError, setHitError] = useState<{ offset: number; accuracy: 'perfect' | 'great' | 'good' | null }>({ offset: 0, accuracy: null });
 
   // Background instruments state
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false);
@@ -341,6 +342,13 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         setScore(result.score);
         setCombo(result.combo);
         setAccuracy(result.accuracy);
+        if (result.hitNote) {
+          // Calculate hit error in milliseconds
+          const gameTime = (performance.now() - gameEngineRef.current!.getStartTime()) / 1000;
+          const adjustedNoteTime = result.hitNote.time + (audioOffset / 1000);
+          const hitErrorMs = (gameTime - adjustedNoteTime) * 1000;
+          setHitError({ offset: hitErrorMs, accuracy: result.hitAccuracy });
+        }
       }
     } else if (event.code === 'Escape') {
       if (gameState === 'playing') {
@@ -394,7 +402,10 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           accuracy: currentState.accuracy,
           combo: currentState.maxCombo,
           hitStats: currentState.hitStats,
-          grade: calculateGrade(currentState.accuracy)
+          grade: calculateGrade(currentState.accuracy),
+          hitTimings: gameEngineRef.current.getHitTimings(),
+          overallDifficulty: song.overallDifficulty || 5,
+          hitWindows: gameEngineRef.current.getTimingWindows()
         };
         console.log('🎉 Game complete! Final score:', finalScore);
         onGameComplete(finalScore);
@@ -573,6 +584,16 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     }
   };
 
+  // Effect to clear hit error after delay
+  useEffect(() => {
+    if (hitError.accuracy) {
+      const timer = setTimeout(() => {
+        setHitError({ offset: 0, accuracy: null });
+      }, 1000); // Clear after 1 second
+      return () => clearTimeout(timer);
+    }
+  }, [hitError]);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black">
       {/* Background Audio Manager - Invisible component that handles background audio */}
@@ -727,6 +748,23 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           )}
         </div>
       </div>
+
+      {/* Hit Error Display */}
+      {hitError.accuracy && (
+        <div 
+          className={`absolute bottom-20 left-1/2 -translate-x-1/2 text-2xl font-mono font-bold transition-opacity duration-500 ${
+            hitError.accuracy === 'perfect' ? 'text-green-400' :
+            hitError.accuracy === 'great' ? 'text-blue-400' :
+            'text-yellow-400'
+          }`}
+          style={{ opacity: hitError.accuracy ? 1 : 0 }}
+        >
+          {hitError.offset > 0 ? '+' : ''}{hitError.offset.toFixed(1)}ms
+          <div className="text-sm text-center mt-1">
+            {hitError.offset > 0 ? 'LATE' : 'EARLY'}
+          </div>
+        </div>
+      )}
 
       {/* Countdown Overlay */}
       {gameState === 'countdown' && (

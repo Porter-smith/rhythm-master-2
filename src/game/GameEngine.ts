@@ -41,6 +41,7 @@ interface HitResult {
   };
   hitNote?: GameNote;
   hitAccuracy: 'perfect' | 'great' | 'good';
+  hitTiming: number;
 }
 
 export class GameEngine {
@@ -54,6 +55,45 @@ export class GameEngine {
   private isPaused: boolean = false;
   private soundFontCallback?: (pitch: number, velocity: number, duration: number) => boolean;
   private selectedInstrument?: { channel: number; instrument: number };
+  private hitTimings: number[] = []; // Array to store hit timings
+  private timingWindows: { perfect: number; great: number; good: number };
+
+  // Add getter for startTime
+  public getStartTime(): number {
+    return this.startTime;
+  }
+
+  // Add getter for hit timings
+  public getHitTimings(): number[] {
+    return this.hitTimings;
+  }
+
+  // Add getter for timing windows
+  public getTimingWindows(): { perfect: number; great: number; good: number } {
+    return this.timingWindows;
+  }
+
+  // Calculate timing windows based on overall difficulty (1-10)
+  private calculateTimingWindows(overallDifficulty: number = 5): { perfect: number; great: number; good: number } {
+    // Base timing windows (OD 5)
+    const baseWindows = {
+      perfect: 25, // ±25ms
+      great: 50,   // ±50ms
+      good: 200    // ±200ms
+    };
+
+    // Make lower ODs much more lenient (exponential scaling)
+    // OD 1 = 4x (Perfect: ±100ms, Great: ±200ms, Good: ±800ms)
+    // OD 5 = 1x (base)
+    // OD 10 = 0.6x (stricter)
+    const difficultyFactor = Math.pow(1.41, 5 - overallDifficulty);
+    
+    return {
+      perfect: Math.round(baseWindows.perfect * difficultyFactor),
+      great: Math.round(baseWindows.great * difficultyFactor),
+      good: Math.round(baseWindows.good * difficultyFactor)
+    };
+  }
 
   constructor(
     song: Song, 
@@ -69,7 +109,8 @@ export class GameEngine {
       audioOffset: audioOffset,
       availableDifficulties: song.difficulties,
       notesForDifficulty: song.notes[difficulty]?.length || 0,
-      selectedInstrument: selectedInstrument ? `Channel ${selectedInstrument.channel + 1}, Program ${selectedInstrument.instrument}` : 'None'
+      selectedInstrument: selectedInstrument ? `Channel ${selectedInstrument.channel + 1}, Program ${selectedInstrument.instrument}` : 'None',
+      overallDifficulty: song.overallDifficulty || 5
     });
 
     this.song = song;
@@ -78,18 +119,9 @@ export class GameEngine {
     this.audioEngine = audioEngine;
     this.selectedInstrument = selectedInstrument;
     
-    // Check if notes exist for this difficulty
-    const notesForDifficulty = song.notes[difficulty];
-    if (!notesForDifficulty || notesForDifficulty.length === 0) {
-      console.error(`❌ No notes found for difficulty: ${difficulty}`);
-      console.error(`📊 Available notes:`, song.notes);
-      console.error(`🎵 Song format: ${song.format}`);
-      
-      if (song.format === 'midi') {
-        console.error(`🎹 MIDI song may not have loaded properly`);
-        console.error(`📂 Expected MIDI files:`, 'midiFiles' in song ? song.midiFiles : 'No midiFiles property');
-      }
-    }
+    // Calculate timing windows based on song's overall difficulty
+    this.timingWindows = this.calculateTimingWindows(song.overallDifficulty);
+    console.log('🎯 Timing windows:', this.timingWindows);
     
     this.gameState = {
       notes: this.createGameNotes(),
@@ -233,7 +265,7 @@ export class GameEngine {
       const adjustedTime = note.time + (this.audioOffset / 1000);
       const distance = Math.abs(gameTime - adjustedTime);
       
-      if (distance < closestDistance && distance <= 0.2) { // 200ms hit window
+      if (distance < closestDistance && distance <= this.timingWindows.good / 1000) { // Use good window
         closestDistance = distance;
         closestNote = note;
       }
@@ -242,15 +274,18 @@ export class GameEngine {
     if (closestNote) {
       closestNote.isHit = true;
       const offsetMs = closestDistance * 1000;
+      const isLate = gameTime > (closestNote.time + (this.audioOffset / 1000));
+      const hitTiming = isLate ? offsetMs : -offsetMs;
+      this.hitTimings.push(hitTiming);
       
       let accuracy: 'perfect' | 'great' | 'good' = 'good';
       let points = 50;
       
-      if (offsetMs <= 25) {
+      if (Math.abs(offsetMs) <= this.timingWindows.perfect) {
         accuracy = 'perfect';
         points = 100;
         this.gameState.hitStats.perfect++;
-      } else if (offsetMs <= 50) {
+      } else if (Math.abs(offsetMs) <= this.timingWindows.great) {
         accuracy = 'great';
         points = 80;
         this.gameState.hitStats.great++;
@@ -290,7 +325,8 @@ export class GameEngine {
         accuracy: this.gameState.accuracy,
         hitStats: this.gameState.hitStats,
         hitNote: closestNote,
-        hitAccuracy: accuracy
+        hitAccuracy: accuracy,
+        hitTiming: hitTiming
       };
     } else {
       console.log(`❌ No note in range for input at ${gameTime.toFixed(3)}s`);

@@ -14,6 +14,7 @@ export const customSongs: CustomSong[] = [
     difficulties: ['easy', 'medium', 'hard'],
     bpm: 120,
     format: 'custom',
+    overallDifficulty: 3, // Beginner-friendly timing windows
     notes: {
       easy: [
         { time: 0.5, pitch: 60, duration: 0.5 },  // C
@@ -56,6 +57,7 @@ export const customSongs: CustomSong[] = [
     difficulties: ['easy'],
     bpm: 100,
     format: 'custom',
+    overallDifficulty: 2, // Very beginner-friendly
     notes: {
       easy: [
         { time: 0.5, pitch: 64, duration: 0.5 },  // E
@@ -73,6 +75,7 @@ export const customSongs: CustomSong[] = [
     difficulties: ['easy', 'medium', 'hard'],
     bpm: 140,
     format: 'custom',
+    overallDifficulty: 4,
     notes: {
       easy: [
         { time: 0.5, pitch: 60, duration: 0.5 },  // C
@@ -114,6 +117,7 @@ export const midiSongs: MidiSong[] = [
     difficulties: ['easy', 'medium', 'hard'],
     bpm: 120,
     format: 'midi',
+    overallDifficulty: 3, // Beginner-friendly timing windows
     midiFiles: {
       easy: 'https://porter-smith.github.io/rhythm-master-files/midi/twinkle-easy.midi',
       medium: 'https://porter-smith.github.io/rhythm-master-files/midi/twinkle-medium.mid',
@@ -138,6 +142,7 @@ export const midiSongs: MidiSong[] = [
     difficulties: ['medium', 'hard'],
     bpm: 90,
     format: 'midi',
+    overallDifficulty: 6, // More precise timing required
     midiFiles: {
       medium: 'https://porter-smith.github.io/rhythm-master-files/midi/canon-medium.mid',
       hard: 'https://porter-smith.github.io/rhythm-master-files/midi/canon-hard.mid'
@@ -159,6 +164,7 @@ export const midiSongs: MidiSong[] = [
     difficulties: ['easy', 'medium', 'hard'],
     bpm: 120,
     format: 'midi',
+    overallDifficulty: 5, // Moderate timing precision
     soundFont: 'https://porter-smith.github.io/rhythm-master-files/soundfonts/gzdoom.sf2',
     midiFiles: {
       easy: 'https://porter-smith.github.io/rhythm-master-files/midi/fur-elise-easy.mid',
@@ -179,6 +185,7 @@ export const midiSongs: MidiSong[] = [
     difficulties: ['easy'],
     bpm: 140,
     format: 'midi',
+    overallDifficulty: 7, // Fast-paced, requires good timing
     soundFont: 'https://porter-smith.github.io/rhythm-master-files/soundfonts/gzdoom.sf2',
     midiFiles: {
       easy: 'https://porter-smith.github.io/rhythm-master-files/midi/dooms-gate-easy.mid'
@@ -198,6 +205,7 @@ export const midiSongs: MidiSong[] = [
     difficulties: ['easy'],
     bpm: 140,
     format: 'midi',
+    overallDifficulty: 8, // Challenging timing windows
     midiFiles: {
       easy: 'https://porter-smith.github.io/rhythm-master-files/midi/spearsofjustice-easy.mid'
     },
@@ -213,6 +221,7 @@ export const midiSongs: MidiSong[] = [
     difficulties: ['easy'],
     bpm: 140,
     format: 'midi',
+    overallDifficulty: 4, // Moderate timing windows for testing
     midiFiles: {
       easy: 'https://porter-smith.github.io/rhythm-master-files/midi/test-drive-easy.mid'
     },
