@@ -29,13 +29,18 @@ export interface GameScore {
     miss: number;
   };
   grade: string;
-  hitTimings: number[]; // Array of hit timings in milliseconds (negative = early, positive = late)
-  overallDifficulty: number; // The OD value that was used
+  hitTimings: Array<{
+    noteTime: number;
+    hitTime: number;
+    accuracy: 'perfect' | 'great' | 'good' | 'miss';
+    pitch: number;
+  }>;
+  overallDifficulty: number;
   hitWindows: {
     perfect: number;
     great: number;
     good: number;
-  }; // The actual timing windows used based on OD
+  };
 }
 
 export interface GameNote {
@@ -50,4 +55,43 @@ export interface GameNote {
   isActive?: boolean;
 }
 
-export type GameState = 'menu' | 'songSelection' | 'gameplay' | 'settings' | 'score' | 'calibration' | 'musicPlayer' | 'smplrPlayer' | 'midiDebug' | 'multiplayerTest' | 'soundFontPOC';
+export type GameState = 'menu' | 'songSelection' | 'gameplay' | 'settings' | 'score' | 'calibration' | 'musicPlayer' | 'smplrPlayer' | 'midiDebug' | 'multiplayerTest' | 'soundFontPOC' | 'gameplayPOC' | 'replay';
+
+// New types for replay system
+export interface GameReplay {
+  id: string;
+  songId: string;
+  songTitle: string;
+  songArtist: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  timestamp: number;
+  score: GameScore;
+  inputEvents: ReplayInputEvent[];
+  gameSettings: {
+    audioOffset: number;
+    selectedInstrument?: {
+      channel: number;
+      instrument: number;
+      name: string;
+    };
+  };
+}
+
+export interface ReplayInputEvent {
+  timestamp: number;
+  type: 'keydown' | 'keyup';
+  keyCode: string;
+  pitch: number;
+  gameTime: number;
+}
+
+export interface StoredScore {
+  id: string;
+  songId: string;
+  songTitle: string;
+  songArtist: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  timestamp: number;
+  score: GameScore;
+  isReplayAvailable: boolean;
+}

@@ -8,6 +8,8 @@ import { LoadingScreen } from './LoadingScreen';
 import { useSoundFontManager } from './SoundFontManager';
 import { BackgroundInstrumentsPanel } from './BackgroundInstrumentsPanel';
 import { BackgroundAudioManagerComponent, BackgroundAudioManager } from './BackgroundAudioManager';
+import { useReplayRecorder } from '../../hooks/useReplayRecorder';
+import { scoreDatabase } from '../../utils/scoreDatabase';
 
 interface GameplayScreenProps {
   song: Song;
@@ -60,6 +62,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   
   // SoundFont state using the manager
   const { soundFontState, loadSongSoundFont, playNote, stopNote, stopAllNotes } = useSoundFontManager();
+  
+  // Replay recording
+  const { isRecording, recordedEvents, startRecording, stopRecording, recordEvent, clearRecording } = useReplayRecorder();
   
   // Loading state
   const [loadingState, setLoadingState] = useState<LoadingState>({
@@ -132,6 +137,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         console.log('\n🎮 ===== GAMEPLAY INITIALIZATION =====');
         console.log(`🎯 Selected difficulty: ${difficulty}`);
         console.log(`🎹 Selected instrument:`, selectedInstrument ? `Channel ${selectedInstrument.channel + 1}, Program ${selectedInstrument.instrument}` : 'None');
+        
+        // Initialize database
+        await scoreDatabase.initialize();
         
         // Phase 1: Initialize basic components
         setLoadingState({
@@ -345,6 +353,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             backgroundAudioRef.current.play();
           }
           
+          // Start recording replay
+          startRecording();
+          
           setGameState('playing');
           
           console.log('🎮 Game and background audio started simultaneously!');
@@ -401,6 +412,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           pressedKeysRef.current = next; // Update ref immediately
           return next;
         });
+        
+        // Record replay event
+        recordEvent('keydown', event.code, targetPitch);
         
         // ALWAYS play the sound when key is first pressed (like a real piano)
         if (soundFontState.isReady && playNote) {
@@ -501,6 +515,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         console.log(`🎹 Stopping sound for key release: pitch=${targetPitch}`);
         stopNote(targetPitch);
       }
+      
+      // Record replay event
+      recordEvent('keyup', event.code, targetPitch);
     }
   }, [keyToPitch, soundFontState.isReady, stopNote]);
 
@@ -531,7 +548,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   useEffect(() => {
     if (gameState !== 'playing' && gameState !== 'paused') return;
 
-    const gameLoop = () => {
+    const gameLoop = async () => {
       const canvas = canvasRef.current;
       if (!canvas || !gameEngineRef.current) return;
 
@@ -570,16 +587,52 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         
         // Check if game is complete
         if (currentState.isComplete) {
+          // Stop recording replay
+          stopRecording();
+          
           const finalScore: GameScore = {
             score: currentState.score,
             accuracy: currentState.accuracy,
-            combo: currentState.maxCombo,
+            combo: currentState.combo,
             hitStats: currentState.hitStats,
             grade: calculateGrade(currentState.accuracy),
             hitTimings: gameEngineRef.current.getHitTimings(),
             overallDifficulty: song.overallDifficulty || 5,
             hitWindows: gameEngineRef.current.getTimingWindows()
           };
+          
+          // Save score and replay
+          try {
+            const scoreId = await scoreDatabase.saveScore(
+              finalScore,
+              song.id,
+              song.title,
+              song.artist,
+              difficulty
+            );
+            
+            // Save replay if we have recorded events
+            if (recordedEvents.length > 0) {
+              await scoreDatabase.saveReplay(
+                scoreId,
+                song.id,
+                song.title,
+                song.artist,
+                difficulty,
+                finalScore,
+                recordedEvents,
+                {
+                  audioOffset,
+                  selectedInstrument
+                }
+              );
+            }
+            
+            console.log('💾 Score and replay saved successfully');
+          } catch (error) {
+            console.error('❌ Failed to save score/replay:', error);
+          }
+          
           console.log('🎉 Game complete! Final score:', finalScore);
           onGameComplete(finalScore);
           return;

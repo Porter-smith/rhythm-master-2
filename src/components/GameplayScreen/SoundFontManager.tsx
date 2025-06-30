@@ -94,7 +94,7 @@ export const useSoundFontManager = () => {
       // Create new SpessaSynth Synthetizer (following the example pattern)
       console.log('🎼 Creating SpessaSynth Synthetizer...');
       const newSynth = new Synthetizer(context.destination, soundFontBuffer);
-      
+
       // Wait for the synthesizer to be ready
       console.log('⏳ Waiting for synthesizer to be ready...');
       await newSynth.isReady;
@@ -329,7 +329,7 @@ export const useSoundFontManager = () => {
       const scaledVelocity = Math.min(127, velocity); // Ensure velocity is in valid range
       
       console.log(`🎵 Playing SpessaSynth note: channel=${channel}, pitch=${pitch}, velocity=${scaledVelocity}`);
-      
+
       // NOTE ON - Start the note
       currentState.synth.noteOn(channel, pitch, scaledVelocity);
       

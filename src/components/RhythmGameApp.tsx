@@ -11,7 +11,8 @@ import { MidiParserDebug } from './MidiParserDebug';
 import { MultiplayerTest } from './MultiplayerTest';
 import { SoundFontPOC } from './SoundFontPOC';
 import { GameplayPOC } from './GameplayPOC';
-import { GameState, Song, GameScore } from '../types/game';
+import { ReplayViewer } from './ReplayViewer';
+import { GameState, Song, GameScore, GameReplay } from '../types/game';
 import { AudioEngine } from '../game/AudioEngine';
 
 export const RhythmGameApp: React.FC = () => {
@@ -23,6 +24,9 @@ export const RhythmGameApp: React.FC = () => {
   const [audioOffset, setAudioOffset] = useState<number>(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [audioEngine] = useState(() => new AudioEngine());
+  
+  // Replay viewing state
+  const [currentReplay, setCurrentReplay] = useState<GameReplay | null>(null);
 
   useEffect(() => {
     audioEngine.initialize();
@@ -97,6 +101,16 @@ export const RhythmGameApp: React.FC = () => {
     transitionTo('settings');
   };
 
+  const handleViewReplay = (replay: GameReplay) => {
+    setCurrentReplay(replay);
+    transitionTo('replay');
+  };
+
+  const handleReplayBack = () => {
+    setCurrentReplay(null);
+    transitionTo('songSelection');
+  };
+
   const renderCurrentScreen = () => {
     switch (gameState) {
       case 'menu':
@@ -118,6 +132,7 @@ export const RhythmGameApp: React.FC = () => {
           <SongSelection
             onSongSelect={handleSongSelect}
             onBack={() => transitionTo('menu')}
+            onViewReplay={handleViewReplay}
           />
         );
       case 'gameplay':
@@ -195,6 +210,13 @@ export const RhythmGameApp: React.FC = () => {
             onBack={() => transitionTo('menu')}
           />
         );
+      case 'replay':
+        return currentReplay ? (
+          <ReplayViewer
+            replay={currentReplay}
+            onBack={handleReplayBack}
+          />
+        ) : null;
       default:
         return null;
     }
