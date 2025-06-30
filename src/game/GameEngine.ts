@@ -1,16 +1,11 @@
-import { Song, Note } from '../types/game';
+import { Song, Note, GameNote as BaseGameNote } from '../types/game';
 import { AudioEngine } from './AudioEngine';
 
-interface GameNote extends Note {
+interface GameNote extends BaseGameNote {
   id: number;
   x: number;
   y: number;
-  isHit: boolean;
-  isMissed: boolean;
-  isActive: boolean;
   timeToHit: number;
-  channel?: number;
-  velocity?: number;
 }
 
 interface GameState {
@@ -249,18 +244,21 @@ export class GameEngine {
     return this.gameState;
   }
 
-  handleInput(inputTime: number): HitResult | null {
+  handleInput(inputTime: number, targetPitch?: number): HitResult | null {
     if (!this.isPlaying || this.isPaused) return null;
 
     const gameTime = (inputTime - this.startTime) / 1000;
-    console.log(`🎮 Input received at game time: ${gameTime.toFixed(3)}s`);
+    console.log(`🎮 Input received at game time: ${gameTime.toFixed(3)}s, target pitch: ${targetPitch}`);
     
-    // Find the closest active note
+    // Find the closest active note that matches the pitch
     let closestNote: GameNote | null = null;
     let closestDistance = Infinity;
 
     this.gameState.notes.forEach(note => {
       if (note.isHit || note.isMissed) return;
+      
+      // Skip notes that don't match the target pitch (if specified)
+      if (targetPitch !== undefined && note.pitch !== targetPitch) return;
       
       const adjustedTime = note.time + (this.audioOffset / 1000);
       const distance = Math.abs(gameTime - adjustedTime);
@@ -270,6 +268,7 @@ export class GameEngine {
         closestNote = note;
       }
     });
+
 
     if (closestNote) {
       closestNote.isHit = true;

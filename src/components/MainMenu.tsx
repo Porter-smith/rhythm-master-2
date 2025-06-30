@@ -9,6 +9,7 @@ interface MainMenuProps {
   onMidiDebug: () => void;
   onMultiplayerTest: () => void;
   onSoundFontPOC: () => void;
+  onGameplayPOC: () => void;
   onQuit: () => void;
 }
 
@@ -20,6 +21,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onMidiDebug,
   onMultiplayerTest,
   onSoundFontPOC,
+  onGameplayPOC,
   onQuit 
 }) => {
   return (
@@ -60,6 +62,18 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           <div className="relative flex items-center justify-center space-x-3 py-4">
             <Headphones className="w-5 h-5" />
             <span>SOUNDFONT POC</span>
+          </div>
+        </button>
+
+        {/* Gameplay POC Button */}
+        <button
+          onClick={onGameplayPOC}
+          className="group relative w-72 h-18 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-white font-bold text-lg rounded-xl shadow-2xl transform transition-all duration-300 hover:scale-110 hover:shadow-yellow-500/25"
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-xl blur opacity-0 group-hover:opacity-75 transition-opacity duration-300"></div>
+          <div className="relative flex items-center justify-center space-x-3 py-4">
+            <TestTube className="w-5 h-5" />
+            <span>GAMEPLAY POC</span>
           </div>
         </button>
 

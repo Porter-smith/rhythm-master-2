@@ -10,6 +10,7 @@ import { SmplrMusicPlayer } from './SmplrMusicPlayer';
 import { MidiParserDebug } from './MidiParserDebug';
 import { MultiplayerTest } from './MultiplayerTest';
 import { SoundFontPOC } from './SoundFontPOC';
+import { GameplayPOC } from './GameplayPOC';
 import { GameState, Song, GameScore } from '../types/game';
 import { AudioEngine } from '../game/AudioEngine';
 
@@ -64,6 +65,10 @@ export const RhythmGameApp: React.FC = () => {
     transitionTo('soundFontPOC' as GameState);
   };
 
+  const handleGameplayPOC = () => {
+    transitionTo('gameplayPOC' as GameState);
+  };
+
   const handleSongSelect = (song: Song, difficulty: 'easy' | 'medium' | 'hard', instrument?: { channel: number; instrument: number; name: string }) => {
     setSelectedSong(song);
     setSelectedDifficulty(difficulty);
@@ -104,6 +109,7 @@ export const RhythmGameApp: React.FC = () => {
             onMidiDebug={handleMidiDebug}
             onMultiplayerTest={handleMultiplayerTest}
             onSoundFontPOC={handleSoundFontPOC}
+            onGameplayPOC={handleGameplayPOC}
             onQuit={() => window.close()}
           />
         );
@@ -180,6 +186,12 @@ export const RhythmGameApp: React.FC = () => {
       case 'soundFontPOC' as GameState:
         return (
           <SoundFontPOC
+            onBack={() => transitionTo('menu')}
+          />
+        );
+      case 'gameplayPOC' as GameState:
+        return (
+          <GameplayPOC
             onBack={() => transitionTo('menu')}
           />
         );

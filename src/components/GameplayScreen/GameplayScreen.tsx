@@ -77,11 +77,20 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [loadedSong, setLoadedSong] = useState<Song | null>(null);
   const [filteredNotes, setFilteredNotes] = useState<FilteredNote[]>([]);
   const [hitError, setHitError] = useState<{ offset: number; accuracy: 'perfect' | 'great' | 'good' | null }>({ offset: 0, accuracy: null });
+  const [pressedKeys, setPressedKeys] = useState<Set<number>>(new Set());
+  const [lastHitInfo, setLastHitInfo] = useState<{ pressedPitch: number; hitPitch: number; timestamp: number } | null>(null);
 
   // Background instruments state
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false);
   const [midiFileForBackground, setMidiFileForBackground] = useState<ArrayBuffer | null>(null);
   const [backgroundAudioReady, setBackgroundAudioReady] = useState(false);
+
+  // Note information for learning/practice
+  const [currentNoteInfo, setCurrentNoteInfo] = useState<{
+    hittableNotes: FilteredNote[];
+    upcomingNotes: FilteredNote[];
+    gameTime: number;
+  }>({ hittableNotes: [], upcomingNotes: [], gameTime: 0 });
 
   // Debug information
   const debugInfo = {
@@ -168,7 +177,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             console.log(`✅ MIDI ${difficulty} difficulty loaded successfully`);
 
             // Load MIDI file for background instruments
-            console.log("LOADINMG THIS THING THLOADING THIS TIHNGK ")
+            console.log("LOADINMG THIS THLOADING THIS TIHNGK ")
             const midiUrl = (song as any).midiFiles?.[difficulty];
             if (midiUrl) {
               try {
@@ -330,27 +339,95 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         }
       }, 1000);
       return () => clearTimeout(timer);
-    }
-  }, [gameState, countdown, soundFontState, playNote]);
+          }
+    }, [gameState, countdown, soundFontState, playNote]);
+
+  // FL Studio style keyboard mapping
+  const keyToPitch: { [key: string]: number } = {
+    // Lower octave (Z-M row)
+    'KeyZ': 60,  // C4
+    'KeyX': 62,  // D4
+    'KeyC': 64,  // E4
+    'KeyV': 65,  // F4
+    'KeyB': 67,  // G4
+    'KeyN': 69,  // A4
+    'KeyM': 71,  // B4
+    // Black keys (S-L row)
+    'KeyS': 61,  // C#4
+    'KeyD': 63,  // D#4
+    'KeyF': 66,  // F#4
+    'KeyG': 68,  // G#4
+    'KeyH': 70,  // A#4
+    // Upper octave (Q-P row)
+    'KeyQ': 72,  // C5
+    'KeyW': 74,  // D5
+    'KeyE': 76,  // E5
+    'KeyR': 77,  // F5
+    'KeyT': 79,  // G5
+    'KeyY': 81,  // A5
+    'KeyU': 83,  // B5
+  };
 
   // Input handling
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
-    if (event.code === 'Space' && gameState === 'playing') {
+    // Handle piano key presses - ALWAYS play sound when piano keys are pressed
+    if (keyToPitch[event.code] !== undefined) {
       event.preventDefault();
-      const result = gameEngineRef.current?.handleInput(performance.now());
-      if (result) {
-        setScore(result.score);
-        setCombo(result.combo);
-        setAccuracy(result.accuracy);
-        if (result.hitNote) {
-          // Calculate hit error in milliseconds
-          const gameTime = (performance.now() - gameEngineRef.current!.getStartTime()) / 1000;
-          const adjustedNoteTime = result.hitNote.time + (audioOffset / 1000);
-          const hitErrorMs = (gameTime - adjustedNoteTime) * 1000;
-          setHitError({ offset: hitErrorMs, accuracy: result.hitAccuracy });
+      const targetPitch = keyToPitch[event.code];
+      
+      // Add key to pressed keys (visual feedback)
+      setPressedKeys(prev => new Set([...prev, targetPitch]));
+      
+      // ALWAYS play the sound when key is pressed (like a real piano)
+      if (soundFontState.isReady && playNote) {
+        const velocity = 80; // Standard velocity for manual key presses
+        const duration = 0.5; // Standard duration for manual key presses
+        console.log(`🎹 Playing sound for key press: pitch=${targetPitch}, velocity=${velocity}`);
+        playNote(targetPitch, velocity, duration);
+      }
+      
+            // Only check for game note hits if actually playing the game
+      if (gameState === 'playing') {
+        // Debug: Show what notes are available near the hit line
+        const gameTime = (performance.now() - gameEngineRef.current!.getStartTime()) / 1000;
+        const nearbyNotes = filteredNotes.filter(note => {
+          const adjustedTime = note.time + (audioOffset / 1000);
+          const distance = Math.abs(gameTime - adjustedTime);
+          return distance <= 0.5; // Within 500ms
+        });
+        
+        console.log(`🎮 Key ${event.code} pressed (pitch ${targetPitch}). Nearby notes:`, nearbyNotes.map(n => `pitch ${n.pitch} at time ${n.time?.toFixed(2)}`));
+        
+        const result = gameEngineRef.current?.handleInput(performance.now(), targetPitch);
+        if (result) {
+          setScore(result.score);
+          setCombo(result.combo);
+          setAccuracy(result.accuracy);
+          if (result.hitNote) {
+            // Calculate hit error in milliseconds
+            const gameTime = (performance.now() - gameEngineRef.current!.getStartTime()) / 1000;
+            const adjustedNoteTime = result.hitNote.time + (audioOffset / 1000);
+            const hitErrorMs = (gameTime - adjustedNoteTime) * 1000;
+            setHitError({ offset: hitErrorMs, accuracy: result.hitAccuracy });
+            
+            // Show what note was actually hit vs what was pressed
+            setLastHitInfo({
+              pressedPitch: targetPitch,
+              hitPitch: result.hitNote.pitch,
+              timestamp: performance.now()
+            });
+            
+            console.log(`✅ HIT! Pressed ${targetPitch}, hit note ${result.hitNote.pitch}, timing: ${hitErrorMs.toFixed(1)}ms`);
+          }
+        } else {
+          console.log(`❌ No hit for pitch ${targetPitch}`);
         }
       }
-    } else if (event.code === 'Escape') {
+      return; // Don't process other key events if this was a piano key
+    }
+    
+    // Handle other game controls
+    if (event.code === 'Escape') {
       if (gameState === 'playing') {
         setGameState('paused');
         gameEngineRef.current?.pause();
@@ -373,10 +450,26 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     }
   }, [gameState, showDebug, showBackgroundPanel]);
 
+  // Handle key release
+  const handleKeyRelease = useCallback((event: KeyboardEvent) => {
+    if (keyToPitch[event.code] !== undefined) {
+      const targetPitch = keyToPitch[event.code];
+      setPressedKeys(prev => {
+        const next = new Set(prev);
+        next.delete(targetPitch);
+        return next;
+      });
+    }
+  }, [keyToPitch]);
+
   useEffect(() => {
     document.addEventListener('keydown', handleKeyPress);
-    return () => document.removeEventListener('keydown', handleKeyPress);
-  }, [handleKeyPress]);
+    document.addEventListener('keyup', handleKeyRelease);
+    return () => {
+      document.removeEventListener('keydown', handleKeyPress);
+      document.removeEventListener('keyup', handleKeyRelease);
+    };
+  }, [handleKeyPress, handleKeyRelease]);
 
   // Game loop
   useEffect(() => {
@@ -394,6 +487,31 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       
       // Update filtered notes from game engine state
       setFilteredNotes(currentState.notes);
+      
+      // Update note information for learning display
+      if (gameState === 'playing') {
+        const gameTime = (performance.now() - gameEngineRef.current.getStartTime()) / 1000;
+        
+        // Find notes that can be hit right now (within hit window)
+        const hittableNotes = currentState.notes.filter(note => {
+          const adjustedTime = note.time + (audioOffset / 1000);
+          const distance = Math.abs(gameTime - adjustedTime);
+          return distance <= 0.2 && !note.isHit && !note.isMissed; // 200ms hit window
+        });
+        
+        // Find upcoming notes (next 2-3 seconds)
+        const upcomingNotes = currentState.notes.filter(note => {
+          const adjustedTime = note.time + (audioOffset / 1000);
+          const timeUntilNote = adjustedTime - gameTime;
+          return timeUntilNote > 0.2 && timeUntilNote <= 3.0 && !note.isHit && !note.isMissed;
+        }).slice(0, 8); // Limit to next 8 notes
+        
+        setCurrentNoteInfo({
+          hittableNotes,
+          upcomingNotes,
+          gameTime
+        });
+      }
       
       // Check if game is complete
       if (currentState.isComplete) {
@@ -473,6 +591,111 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       ctx.stroke();
     }
 
+    // Draw piano keyboard at bottom (like the Python version)
+    const keyboardY = height - 150;
+    const keyboardHeight = 120;
+    const whiteKeyWidth = 40;
+    const blackKeyWidth = 28;
+    const blackKeyHeight = 80;
+    
+    // Define the keyboard layout (one octave)
+    const whiteKeys = [
+      { note: 60, label: 'C', key: 'Z' },   // C4
+      { note: 62, label: 'D', key: 'X' },   // D4
+      { note: 64, label: 'E', key: 'C' },   // E4
+      { note: 65, label: 'F', key: 'V' },   // F4
+      { note: 67, label: 'G', key: 'B' },   // G4
+      { note: 69, label: 'A', key: 'N' },   // A4
+      { note: 71, label: 'B', key: 'M' },   // B4
+    ];
+    
+    const blackKeys = [
+      { note: 61, label: 'C#', key: 'S', position: 0.7 },  // C#4
+      { note: 63, label: 'D#', key: 'D', position: 1.7 },  // D#4
+      { note: 66, label: 'F#', key: 'F', position: 3.7 },  // F#4
+      { note: 68, label: 'G#', key: 'G', position: 4.7 },  // G#4
+      { note: 70, label: 'A#', key: 'H', position: 5.7 },  // A#4
+    ];
+
+    // Draw white keys
+    whiteKeys.forEach((keyInfo, i) => {
+      const x = 50 + i * whiteKeyWidth;
+      const isPressed = pressedKeys.has(keyInfo.note);
+      
+      // Key background
+      ctx.fillStyle = isPressed ? '#4169E1' : '#ffffff';
+      ctx.fillRect(x, keyboardY, whiteKeyWidth - 1, keyboardHeight);
+      
+      // Key border
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, keyboardY, whiteKeyWidth - 1, keyboardHeight);
+      
+      // Key labels
+      ctx.fillStyle = isPressed ? '#ffffff' : '#000000';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(keyInfo.key, x + whiteKeyWidth/2, keyboardY + keyboardHeight - 30);
+      ctx.fillText(keyInfo.label, x + whiteKeyWidth/2, keyboardY + keyboardHeight - 10);
+    });
+
+    // Draw black keys (on top of white keys)
+    blackKeys.forEach((keyInfo) => {
+      const x = 50 + keyInfo.position * whiteKeyWidth - blackKeyWidth/2;
+      const isPressed = pressedKeys.has(keyInfo.note);
+      
+      // Key background
+      ctx.fillStyle = isPressed ? '#4169E1' : '#000000';
+      ctx.fillRect(x, keyboardY, blackKeyWidth, blackKeyHeight);
+      
+      // Key border
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, keyboardY, blackKeyWidth, blackKeyHeight);
+      
+      // Key labels
+      ctx.fillStyle = isPressed ? '#ffffff' : '#ffffff';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(keyInfo.key, x + blackKeyWidth/2, keyboardY + blackKeyHeight - 25);
+      ctx.fillText(keyInfo.label, x + blackKeyWidth/2, keyboardY + blackKeyHeight - 10);
+    });
+
+    // Draw upper octave keys (Q-U row) - smaller keys above
+    const upperOctaveY = keyboardY - 60;
+    const upperKeys = [
+      { note: 72, label: 'C', key: 'Q' },   // C5
+      { note: 74, label: 'D', key: 'W' },   // D5
+      { note: 76, label: 'E', key: 'E' },   // E5
+      { note: 77, label: 'F', key: 'R' },   // F5
+      { note: 79, label: 'G', key: 'T' },   // G5
+      { note: 81, label: 'A', key: 'Y' },   // A5
+      { note: 83, label: 'B', key: 'U' },   // B5
+    ];
+
+    upperKeys.forEach((keyInfo, i) => {
+      const x = 50 + i * (whiteKeyWidth * 0.8);
+      const keyWidth = whiteKeyWidth * 0.7;
+      const keyHeight = 40;
+      const isPressed = pressedKeys.has(keyInfo.note);
+      
+      // Key background
+      ctx.fillStyle = isPressed ? '#4169E1' : '#e0e0e0';
+      ctx.fillRect(x, upperOctaveY, keyWidth, keyHeight);
+      
+      // Key border
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, upperOctaveY, keyWidth, keyHeight);
+      
+      // Key labels
+      ctx.fillStyle = isPressed ? '#ffffff' : '#000000';
+      ctx.font = '10px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(keyInfo.key, x + keyWidth/2, upperOctaveY + keyHeight - 15);
+      ctx.fillText(keyInfo.label, x + keyWidth/2, upperOctaveY + keyHeight - 5);
+    });
+
     // Hit line (red line at 25% width)
     const hitLineX = width * 0.25;
     ctx.strokeStyle = '#ff0000';
@@ -485,6 +708,35 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     // Hit window (semi-transparent area)
     ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
     ctx.fillRect(hitLineX - 20, staffY, 40, staffHeight);
+
+    // Show pressed keys on the hit line (like your Python version)
+    pressedKeys.forEach(pitch => {
+      const noteY = getNoteY(pitch, staffY, lineSpacing);
+      
+      // Draw a bright highlight box for the pressed key at the hit line
+      ctx.fillStyle = 'rgba(255, 255, 0, 0.8)'; // Bright yellow highlight
+      ctx.fillRect(hitLineX - 25, noteY - 8, 50, 16);
+      
+      // Draw border
+      ctx.strokeStyle = '#ffff00';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(hitLineX - 25, noteY - 8, 50, 16);
+      
+      // Add text to show which key is pressed
+      ctx.fillStyle = '#000000';
+      ctx.font = '12px Arial bold';
+      ctx.textAlign = 'center';
+      
+      // Get the keyboard key for this pitch
+      let keyLabel = '';
+      Object.entries(keyToPitch).forEach(([key, keyPitch]) => {
+        if (keyPitch === pitch) {
+          keyLabel = key.replace('Key', ''); // Remove 'Key' prefix (KeyZ -> Z)
+        }
+      });
+      
+      ctx.fillText(keyLabel, hitLineX, noteY + 4);
+    });
 
     // Draw notes
     filteredNotes.forEach((note: FilteredNote) => {
@@ -541,6 +793,14 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const isSharpNote = (pitch: number): boolean => {
     const noteInOctave = pitch % 12;
     return [1, 3, 6, 8, 10].includes(noteInOctave);
+  };
+
+  // Helper function to convert MIDI pitch to note name
+  const getNoteNameFromPitch = (pitch: number): string => {
+    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const octave = Math.floor(pitch / 12) - 1;
+    const noteIndex = pitch % 12;
+    return `${noteNames[noteIndex]}${octave}`;
   };
 
   // Handle back button - only allow if not in critical loading phase
@@ -749,6 +1009,66 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         </div>
       </div>
 
+      {/* Note Information Panel for Learning */}
+      {gameState === 'playing' && (
+        <div className="absolute top-20 left-6 bg-black/70 backdrop-blur-sm rounded-lg p-4 text-white min-w-[280px]">
+          <h3 className="text-lg font-bold text-yellow-400 mb-3">🎯 Note Information</h3>
+          
+          {/* Current Hittable Notes */}
+          <div className="mb-4">
+            <h4 className="text-sm font-semibold text-green-400 mb-2">⚡ Hit Now! (200ms window)</h4>
+            {currentNoteInfo.hittableNotes.length > 0 ? (
+              <div className="space-y-1">
+                {currentNoteInfo.hittableNotes.map((note, index) => {
+                  const noteName = getNoteNameFromPitch(note.pitch);
+                  const timeLeft = ((note.time + (audioOffset / 1000)) - currentNoteInfo.gameTime) * 1000;
+                  return (
+                    <div key={index} className="flex justify-between items-center bg-green-900/50 px-2 py-1 rounded text-sm">
+                      <span className="font-mono font-bold">{noteName}</span>
+                      <span className="text-xs text-green-300">
+                        {Math.abs(timeLeft) < 50 ? 'NOW!' : `${timeLeft > 0 ? '+' : ''}${timeLeft.toFixed(0)}ms`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-gray-400 text-sm italic">No notes to hit right now</div>
+            )}
+          </div>
+
+          {/* Upcoming Notes */}
+          <div>
+            <h4 className="text-sm font-semibold text-blue-400 mb-2">🔮 Coming Up (next 3s)</h4>
+            {currentNoteInfo.upcomingNotes.length > 0 ? (
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {currentNoteInfo.upcomingNotes.map((note, index) => {
+                  const noteName = getNoteNameFromPitch(note.pitch);
+                  const timeUntil = ((note.time + (audioOffset / 1000)) - currentNoteInfo.gameTime);
+                  return (
+                    <div key={index} className="flex justify-between items-center bg-blue-900/30 px-2 py-1 rounded text-sm">
+                      <span className="font-mono">{noteName}</span>
+                      <span className="text-xs text-blue-300">
+                        {timeUntil.toFixed(1)}s
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-gray-400 text-sm italic">No upcoming notes</div>
+            )}
+          </div>
+
+          {/* Game Time Display */}
+          <div className="mt-3 pt-2 border-t border-white/20">
+            <div className="text-xs text-gray-400">
+              Game Time: {currentNoteInfo.gameTime.toFixed(1)}s
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hit Error Display */}
       {hitError.accuracy && (
         <div 
@@ -763,6 +1083,23 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           <div className="text-sm text-center mt-1">
             {hitError.offset > 0 ? 'LATE' : 'EARLY'}
           </div>
+        </div>
+      )}
+
+      {/* Hit Info Display - Show what note was pressed vs hit */}
+      {lastHitInfo && performance.now() - lastHitInfo.timestamp < 2000 && (
+        <div className="absolute bottom-32 left-1/2 -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded-lg font-mono text-center">
+          <div className="text-lg">
+            Pressed: <span className="text-blue-300">Note {lastHitInfo.pressedPitch}</span>
+          </div>
+          <div className="text-lg">
+            Actual Note: <span className="text-green-300">Note {lastHitInfo.hitPitch}</span>
+          </div>
+          {lastHitInfo.pressedPitch !== lastHitInfo.hitPitch && (
+            <div className="text-sm text-yellow-300 mt-1">
+              Missed Note 
+            </div>
+          )}
         </div>
       )}
 
@@ -806,9 +1143,10 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         </div>
       )}
 
-      {/* Instructions */}
-      <div className="absolute bottom-6 left-6 text-white/70 text-sm">
-        <p>Press SPACEBAR to hit notes • ESC to pause • F12 for debug info • B for background controls</p>
+              {/* Instructions */}
+        <div className="absolute bottom-6 left-6 text-white/70 text-sm">
+          <p>Use piano keys (Z-M: white keys, S-L: black keys, Q-U: upper octave) • ESC to pause • F12 for debug info • B for background controls</p>
+          <p className="text-yellow-300">📚 Learning Mode: Left panel shows current hittable notes and upcoming notes in real-time</p>
         {soundFontState.isReady && (
           <p className="text-green-400">🎵 Professional audio with {soundFontState.selectedSoundFont} SoundFont</p>
         )}
