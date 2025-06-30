@@ -112,7 +112,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const backgroundAudioRef = useRef<BackgroundAudioManager | null>(null);
   
   // SoundFont state using the manager
-  const { soundFontState, loadSongSoundFont, playNote, stopNote, stopAllNotes, programChange } = useSoundFontManager();
+  const { soundFontState, loadSongSoundFont, playNote, stopNote, stopAllNotes } = useSoundFontManager();
   
   // Replay recording
   const { isRecording, recordedEvents, startRecording, stopRecording, recordEvent, clearRecording } = useReplayRecorder();
@@ -294,7 +294,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         // Set up the selected instrument's program if available
         if (soundFontSuccess && selectedInstrument) {
           console.log(`🎹 Setting up instrument: Channel ${selectedInstrument.channel}, Program ${selectedInstrument.instrument}`);
-          programChange(selectedInstrument.channel, selectedInstrument.instrument);
         }
 
         if (!soundFontSuccess) {
@@ -371,7 +370,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       const soundFontCallback = (pitch: number, velocity: number, duration: number): boolean => {
         if (soundFontState.isReady && playNote && selectedInstrument) {
           // Ensure the correct program is set on the channel
-          programChange(selectedInstrument.channel, selectedInstrument.instrument);
           // Use the selected instrument's channel
           const channel = selectedInstrument.channel;
           return !!playNote(pitch, velocity, duration, channel);
