@@ -1381,9 +1381,50 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           <div className="text-center text-white">
             <Pause className="w-16 h-16 mx-auto mb-4" />
             <h2 className="text-4xl font-bold mb-4">Paused</h2>
-            <p className="text-xl">Press ESC to resume</p>
+            <div className="space-y-4">
+              <button
+                onClick={() => setGameState('playing')}
+                className="block w-48 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded transition-colors duration-200"
+              >
+                Resume
+              </button>
+              <button
+                onClick={() => {
+                  // Reset game state
+                  setGameState('countdown');
+                  setCountdown(3);
+                  setScore(0);
+                  setCombo(0);
+                  setAccuracy(100);
+                  setPressedKeys(new Set());
+                  setHitError({ offset: 0, accuracy: null });
+                  // Reset game engine
+                  if (gameEngineRef.current) {
+                    gameEngineRef.current.destroy();
+                    gameEngineRef.current = new GameEngine(song, difficulty, audioOffset, audioEngine, selectedInstrument);
+                  }
+                  // Stop all sounds
+                  if (soundFontState.isReady && stopAllNotes) {
+                    stopAllNotes();
+                  }
+                  // Reset background audio if exists
+                  if (backgroundAudioRef.current) {
+                    backgroundAudioRef.current.stop();
+                  }
+                }}
+                className="block w-48 bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded transition-colors duration-200"
+              >
+                Retry
+              </button>
+              <button
+                onClick={onBack}
+                className="block w-48 bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded transition-colors duration-200"
+              >
+                Back to Songs
+              </button>
+            </div>
             {soundFontState.isReady && (
-              <p className="text-green-400 mt-2">🎹 {soundFontState.selectedSoundFont} Ready</p>
+              <p className="text-green-400 mt-4">🎹 {soundFontState.selectedSoundFont} Ready</p>
             )}
             {backgroundAudioReady && (
               <p className="text-orange-400 mt-1">🎼 Background Audio Paused</p>
@@ -1395,6 +1436,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         </div>
       )}
 
+      {/* Instructions */}
               {/* Instructions */}
         <div className="absolute bottom-6 left-6 text-white/70 text-sm">
           <p>Use piano keys (Z-M: white keys, S-L: black keys, Q-U: upper octave) • ESC to pause • F12 for debug info • F3 for background controls</p>
