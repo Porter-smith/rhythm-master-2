@@ -14,8 +14,11 @@ declare module 'spessasynth_lib' {
   export class Synthetizer {
     constructor(destination: AudioNode, soundFontBuffer: ArrayBuffer);
     muteChannel(channel: number, isMuted: boolean): void;
+    noteOn(channel: number, note: number, velocity: number): void;
+    noteOff(channel: number, note: number): void;
     presetList: PresetInfo[];
     midiAudioChannels: MidiChannel[];
+    isReady: Promise<void>;
   }
   
   export class Sequencer {

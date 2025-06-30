@@ -1,6 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { Soundfont2Sampler, Reverb } from 'smplr';
-import { SoundFont2 } from 'soundfont2';
+import { Synthetizer } from 'spessasynth_lib';
 import { getAudioContext } from '../../utils/audioContext';
 import { Song } from '../../types/music';
 
@@ -12,11 +11,8 @@ const SOUNDFONTS = {
   'GZDoom': '/soundfonts/gzdoom.sf2',  // Local GZDoom sound font
 };
 
-// Global reverb instance to prevent recreation (exactly like the POC)
-let reverb: Reverb | undefined;
-
 export interface SoundFontState {
-  sampler: Soundfont2Sampler | undefined;
+  synth: Synthetizer | undefined;
   isReady: boolean;
   isLoading: boolean;
   selectedSoundFont: string;
@@ -28,7 +24,7 @@ export interface SoundFontState {
 
 export const useSoundFontManager = () => {
   const [soundFontState, setSoundFontState] = useState<SoundFontState>({
-    sampler: undefined,
+    synth: undefined,
     isReady: false,
     isLoading: false,
     selectedSoundFont: 'Piano',
@@ -42,7 +38,7 @@ export const useSoundFontManager = () => {
   const stateRef = useRef(soundFontState);
   stateRef.current = soundFontState;
 
-  // Load soundfont using the exact working pattern from POC
+  // Load soundfont using SpessaSynth Synthetizer
   const loadSoundFont = useCallback(async (soundfontName: string): Promise<boolean> => {
     try {
       console.log(`🎹 Loading soundfont: ${soundfontName}`);
@@ -52,12 +48,13 @@ export const useSoundFontManager = () => {
         isLoading: true,
         error: null,
         isReady: false,
-        sampler: undefined // Clear sampler during loading
+        synth: undefined // Clear synth during loading
       }));
 
-      // Disconnect existing sampler
-      if (stateRef.current.sampler) {
-        stateRef.current.sampler.disconnect();
+      // Disconnect existing synth
+      if (stateRef.current.synth) {
+        // SpessaSynth doesn't have a disconnect method, we'll just replace it
+        console.log('🔄 Replacing existing synthesizer');
       }
 
       // Get singleton audio context
@@ -70,8 +67,10 @@ export const useSoundFontManager = () => {
         console.log(`🎵 Audio context resumed`);
       }
 
-      // Create global reverb if not exists (exactly like POC)
-      reverb ??= new Reverb(context);
+      // CRITICAL: Load the AudioWorklet module before creating Synthetizer
+      console.log('🔧 Loading AudioWorklet module...');
+      await context.audioWorklet.addModule('/src/components/midi-debug/worklet_processor.min.js');
+      console.log('✅ AudioWorklet module loaded');
 
       // Get soundfont URL - handle both named soundfonts and custom URLs
       let url: string;
@@ -83,51 +82,47 @@ export const useSoundFontManager = () => {
       }
       console.log(`📂 Soundfont URL: ${url}`);
 
-      // Create new sampler with the exact configuration from POC
-      const newSampler = new Soundfont2Sampler(context, {
-        url: url,
-        createSoundfont: (data) => new SoundFont2(data),
-      });
+      // Fetch the soundfont file
+      console.log('📡 Fetching soundfont file...');
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch soundfont: ${response.status} ${response.statusText}`);
+      }
+      const soundFontBuffer = await response.arrayBuffer();
+      console.log(`📦 Soundfont loaded: ${soundFontBuffer.byteLength} bytes`);
 
-      console.log('🎼 Sampler created, waiting for load...');
-
-      // Add effects immediately (exactly like POC)
-      newSampler.output.addEffect('reverb', reverb, 0.2);
+      // Create new SpessaSynth Synthetizer (following the example pattern)
+      console.log('🎼 Creating SpessaSynth Synthetizer...');
+      const newSynth = new Synthetizer(context.destination, soundFontBuffer);
       
-      // VOLUME FIX: Set a much lower volume for manual notes to match background
-      // Background instruments typically play at around 20-30% volume
-      // So we'll set manual notes to around 25% volume
-      newSampler.output.setVolume(25); // Reduced from 80 to 25
-      console.log('🔊 Set SoundFont volume to 25% to match background instruments');
+      // Wait for the synthesizer to be ready
+      console.log('⏳ Waiting for synthesizer to be ready...');
+      await newSynth.isReady;
+      console.log('✅ Synthetizer ready');
 
-      // Wait for the sampler to load (exactly like POC)
-      const loadedSampler = await newSampler.load;
-      console.log('✅ Sampler loaded successfully');
-
-      // Get available instruments
-      const instruments = loadedSampler.instrumentNames || [];
-      console.log(`🎵 Available instruments:`, instruments);
-      console.log(`🎵 Total instruments available: ${instruments.length}`);
+      // Get available presets
+      const presets = newSynth.presetList || [];
+      console.log(`🎵 Available presets: ${presets.length} total`);
+      console.log(`🎵 First 5 presets:`, presets.slice(0, 5));
 
       // Load the specific instrument based on selected instrument name
-      if (instruments.length > 0) {
+      if (presets.length > 0) {
         const selectedInstrument = stateRef.current.selectedInstrument;
         
         if (selectedInstrument && selectedInstrument.name) {
-          // Try to find the instrument by name in the soundfont
+          // Try to find the preset by name in the soundfont
           console.log(`🎹 Looking for instrument: "${selectedInstrument.name}"`);
-          console.log(`🎹 Available instruments:`, instruments);
           
-          // Try to find the instrument by name in the soundfont
-          const foundInstrument = instruments.find(inst => {
-            const instLower = inst.toLowerCase();
+          // Find preset by name (case-insensitive)
+          const foundPreset = presets.find(preset => {
+            const presetLower = preset.presetName.toLowerCase();
             const selectedLower = selectedInstrument.name.toLowerCase();
             
             // Exact match
-            if (instLower === selectedLower) return true;
+            if (presetLower === selectedLower) return true;
             
             // Contains match (either direction)
-            if (instLower.includes(selectedLower) || selectedLower.includes(instLower)) return true;
+            if (presetLower.includes(selectedLower) || selectedLower.includes(presetLower)) return true;
             
             // Handle common variations
             const variations: Record<string, string[]> = {
@@ -205,41 +200,28 @@ export const useSoundFontManager = () => {
             // Check if we have a variation mapping for the selected instrument
             const variation = variations[selectedLower];
             if (variation) {
-              return variation.some((v: string) => instLower.includes(v));
+              return variation.some((v: string) => presetLower.includes(v));
             }
             
             return false;
           });
           
-          if (foundInstrument) {
-            console.log(`🎹 Loading selected instrument: "${foundInstrument}"`);
-            try {
-              await loadedSampler.loadInstrument(foundInstrument);
-              console.log(`✅ Selected instrument loaded: "${foundInstrument}"`);
-            } catch (err) {
-              console.error(`❌ Failed to load selected instrument "${foundInstrument}":`, err);
-              throw new Error(`Failed to load instrument "${foundInstrument}"`);
-            }
+          if (foundPreset) {
+            console.log(`🎹 Found matching preset: "${foundPreset.presetName}" (Bank ${foundPreset.bank}, Program ${foundPreset.program})`);
+            // SpessaSynth automatically loads all presets, so we don't need to explicitly load
           } else {
-            console.error(`❌ Could not find instrument "${selectedInstrument.name}" in soundfont`);
-            throw new Error(`Instrument "${selectedInstrument.name}" not found in soundfont`);
+            console.warn(`⚠️ Could not find preset "${selectedInstrument.name}" in soundfont, using default`);
           }
         } else {
-          // No specific instrument selected, load the first instrument
-          const firstInstrument = instruments[0];
-          console.log(`🎹 Loading default instrument: "${firstInstrument}"`);
-          await loadedSampler.loadInstrument(firstInstrument);
-          console.log(`✅ Default instrument loaded: "${firstInstrument}"`);
+          console.log(`🎹 No specific instrument selected, using default presets`);
         }
-        
-        // Don't load additional instruments - only load the selected one
       } else {
-        console.warn(`⚠️ No instruments found in sound font: ${soundfontName}`);
+        console.warn(`⚠️ No presets found in sound font: ${soundfontName}`);
       }
 
-      // IMPORTANT: Set state with the loaded sampler and mark as ready
+      // IMPORTANT: Set state with the loaded synth and mark as ready
       const newState = {
-        sampler: newSampler,
+        synth: newSynth,
         isReady: true,
         isLoading: false,
         selectedSoundFont: soundfontName,
@@ -252,13 +234,13 @@ export const useSoundFontManager = () => {
       setSoundFontState(newState);
       stateRef.current = newState; // Update ref immediately
 
-      console.log(`🎉 Successfully loaded soundfont: ${soundfontName} at 25% volume`);
-      console.log(`🔍 Final state: sampler exists=${!!newSampler}, ready=true`);
+      console.log(`🎉 Successfully loaded soundfont: ${soundfontName} with SpessaSynth`);
+      console.log(`🔍 Final state: synth exists=${!!newSynth}, ready=true`);
       return true;
     } catch (err) {
       console.error('❌ Failed to load soundfont:', err);
       const errorState = {
-        sampler: undefined,
+        synth: undefined,
         isLoading: false,
         isReady: false,
         selectedSoundFont: soundfontName,
@@ -308,7 +290,7 @@ export const useSoundFontManager = () => {
     }
   }, [loadSoundFont]);
 
-  // Play note using SoundFont - ENHANCED for multi-channel support with VOLUME CONTROL
+  // Play note using SpessaSynth - PROPER noteOn/noteOff pattern
   const playNote = useCallback((pitch: number, velocity: number = 80, duration: number = 0.5, channel: number = 0): number | false => {
     // ALWAYS use the current state from ref, not the stale closure state
     const currentState = stateRef.current;
@@ -318,9 +300,7 @@ export const useSoundFontManager = () => {
       velocity,
       duration,
       channel,
-      samplerExists: !!currentState.sampler,
-      loadingPhase: currentState.isLoading ? 'loading' : currentState.isReady ? 'ready' : 'not-ready',
-      samplerContextState: currentState.sampler?.context?.state,
+      synthExists: !!currentState.synth,
       isReady: currentState.isReady,
       isLoading: currentState.isLoading,
       selectedInstrument: currentState.selectedInstrument,
@@ -333,8 +313,8 @@ export const useSoundFontManager = () => {
       return false;
     }
 
-    if (!currentState.sampler) {
-      console.log('❌ SoundFont callback failed: No sampler');
+    if (!currentState.synth) {
+      console.log('❌ SoundFont callback failed: No synth');
       return false;
     }
 
@@ -344,165 +324,14 @@ export const useSoundFontManager = () => {
     }
 
     try {
-      // For background instruments (different channels), we might want to use different instruments
-      // For now, we'll use the same instrument but could be enhanced to load multiple instruments
+      // Use SpessaSynth's noteOn method (following the example pattern)
+      // Channel 0, pitch, velocity 127 (max)
+      const scaledVelocity = Math.min(127, velocity); // Ensure velocity is in valid range
       
-      // Find the instrument by name in the soundfont
-      if (!currentState.sampler.instrumentNames || currentState.sampler.instrumentNames.length === 0) {
-        console.error('❌ No instrument names available in sampler');
-        return false;
-      }
-
-      const instruments = currentState.sampler.instrumentNames;
+      console.log(`🎵 Playing SpessaSynth note: channel=${channel}, pitch=${pitch}, velocity=${scaledVelocity}`);
       
-      // If no instrument is selected, use the first available instrument
-      if (!currentState.selectedInstrument) {
-        console.log(`ℹ️ No instrument selected, using first available instrument: "${instruments[0]}"`);
-        const noteToPlay = {
-          note: pitch,
-          velocity: Math.min(127, velocity * 0.8), // Use scaled velocity
-          detune: 0,
-          time: currentState.sampler.context.currentTime,
-          duration: duration, // Use the provided duration instead of very long duration
-          instrument: instruments[0]
-        };
-        
-        currentState.sampler.start(noteToPlay);
-        
-        // Add to playing notes
-        setSoundFontState(prev => ({
-          ...prev,
-          playingNotes: new Set([...prev.playingNotes, pitch])
-        }));
-        
-        console.log(`✅ SoundFont note played successfully: ${pitch} with default instrument "${instruments[0]}" on channel ${channel} (volume balanced)`);
-        return pitch; // Return pitch as stopId
-      }
-      console.log(`🎹 Available instruments:`, instruments);
-      console.log(`🎹 Looking for instrument: "${currentState.selectedInstrument.name}"`);
-      
-      // Try to find the instrument by name (case-insensitive)
-      const foundInstrument = instruments.find(inst => {
-        const instLower = inst.toLowerCase();
-        const selectedLower = currentState.selectedInstrument!.name.toLowerCase();
-        
-        // Exact match
-        if (instLower === selectedLower) return true;
-        
-        // Contains match (either direction)
-        if (instLower.includes(selectedLower) || selectedLower.includes(instLower)) return true;
-        
-        // Handle common variations
-        const variations: Record<string, string[]> = {
-          'overdriven guitar': ['overdrive gt', 'overdrive', 'guitar'],
-          'acoustic guitar (steel)': ['steel-str.gt', 'steel', 'guitar'],
-          'acoustic guitar (nylon)': ['nylon-str.gt', 'nylon', 'guitar'],
-          'electric guitar (clean)': ['clean gt', 'clean', 'guitar'],
-          'electric guitar (jazz)': ['jazz gt', 'jazz', 'guitar'],
-          'electric guitar (muted)': ['muted gt', 'muted', 'guitar'],
-          'distortion guitar': ['distortiongt', 'distortion', 'guitar'],
-          'guitar harmonics': ['gt.harmonics', 'harmonics', 'guitar'],
-          'acoustic bass': ['acoustic bs', 'bass'],
-          'electric bass (finger)': ['fingered bs', 'bass'],
-          'electric bass (pick)': ['picked bs', 'bass'],
-          'fretless bass': ['fretless bs', 'bass'],
-          'slap bass 1': ['slap bass 1', 'bass'],
-          'slap bass 2': ['slap bass 2', 'bass'],
-          'synth bass 1': ['synth bass 1', 'bass'],
-          'synth bass 2': ['synth bass 2', 'bass'],
-          'drawbar organ': ['organ 1', 'organ'],
-          'percussive organ': ['organ 2', 'organ'],
-          'rock organ': ['organ 3', 'organ'],
-          'church organ': ['church org', 'organ'],
-          'reed organ': ['reed organ', 'organ'],
-          'acoustic grand piano': ['piano 1', 'piano'],
-          'bright acoustic piano': ['piano 2', 'piano'],
-          'electric grand piano': ['piano 3', 'piano'],
-          'honky-tonk piano': ['honky-tonk', 'piano'],
-          'electric piano 1': ['e.piano 1', 'piano'],
-          'electric piano 2': ['e.piano 2', 'piano'],
-          'harpsichord': ['harpsichord', 'harpsi'],
-          'clavi': ['clav', 'clavi'],
-          'violin': ['violin'],
-          'viola': ['viola'],
-          'cello': ['cello'],
-          'contrabass': ['contrabass'],
-          'tremolo strings': ['tremolo str', 'strings'],
-          'pizzicato strings': ['pizzicato str', 'strings'],
-          'orchestral harp': ['harp'],
-          'timpani': ['timpani'],
-          'string ensemble 1': ['strings', 'ensemble'],
-          'string ensemble 2': ['orchestra', 'ensemble'],
-          'synth strings 1': ['syn.strings1', 'strings'],
-          'synth strings 2': ['syn.strings2', 'strings'],
-          'choir aahs': ['choir aahs', 'choir'],
-          'voice oohs': ['voice oohs', 'voice'],
-          'synth voice': ['synvox', 'voice'],
-          'orchestra hit': ['orchestrahit', 'orchestra'],
-          'trumpet': ['trumpet'],
-          'trombone': ['trombone'],
-          'tuba': ['tuba'],
-          'muted trumpet': ['mutedtrumpet', 'trumpet'],
-          'french horn': ['french horns', 'horn'],
-          'brass section': ['brass 1', 'brass'],
-          'synth brass 1': ['synth brass1', 'brass'],
-          'synth brass 2': ['synth brass2', 'brass'],
-          'soprano sax': ['soprano sax', 'sax'],
-          'alto sax': ['alto sax', 'sax'],
-          'tenor sax': ['tenor sax', 'sax'],
-          'baritone sax': ['baritone sax', 'sax'],
-          'oboe': ['oboe'],
-          'english horn': ['english horn', 'horn'],
-          'bassoon': ['bassoon'],
-          'clarinet': ['clarinet'],
-          'piccolo': ['piccolo'],
-          'flute': ['flute'],
-          'recorder': ['recorder'],
-          'pan flute': ['pan flute', 'flute'],
-          'blown bottle': ['bottle blow', 'bottle'],
-          'shakuhachi': ['shakuhachi'],
-          'whistle': ['whistle'],
-          'ocarina': ['ocarina']
-        };
-        
-        // Check if we have a variation mapping for the selected instrument
-        const variation = variations[selectedLower];
-        if (variation) {
-          return variation.some((v: string) => instLower.includes(v));
-        }
-        
-        return false;
-      });
-      
-      if (!foundInstrument) {
-        console.error(`❌ Could not find instrument "${currentState.selectedInstrument.name}" in soundfont`);
-        return false;
-      }
-
-      console.log(`🎹 Found matching instrument: "${foundInstrument}"`);
-
-      // VOLUME BALANCE FIX: Scale velocity to match background instruments
-      // Background instruments typically use velocity 64-100
-      // We'll scale the input velocity to be more balanced
-      const scaledVelocity = Math.min(127, velocity * 0.8); // Reduce by 20%
-      
-      const noteToPlay = {
-        note: pitch,
-        velocity: scaledVelocity, // Use scaled velocity
-        detune: 0,
-        time: currentState.sampler.context.currentTime,
-        duration: duration, // Use the provided duration instead of very long duration
-        instrument: foundInstrument
-      };
-      
-      console.log(`🎵 Playing SoundFont note with balanced volume:`, {
-        ...noteToPlay,
-        originalVelocity: velocity,
-        scaledVelocity: scaledVelocity,
-        volumeReduction: '20%'
-      });
-      
-      currentState.sampler.start(noteToPlay);
+      // NOTE ON - Start the note
+      currentState.synth.noteOn(channel, pitch, scaledVelocity);
       
       // Add to playing notes
       setSoundFontState(prev => ({
@@ -510,27 +339,31 @@ export const useSoundFontManager = () => {
         playingNotes: new Set([...prev.playingNotes, pitch])
       }));
       
-      console.log(`✅ SoundFont note played successfully: ${pitch} with instrument "${foundInstrument}" on channel ${channel} (volume balanced)`);
+      console.log(`✅ SpessaSynth note played successfully: ${pitch} on channel ${channel}`);
       return pitch; // Return pitch as stopId
     } catch (err) {
-      console.error('❌ Failed to play note with SoundFont:', err);
+      console.error('❌ Failed to play note with SpessaSynth:', err);
       return false;
     }
   }, []); // Empty deps - callback never changes, always uses current state
 
-  // Stop a specific note (for key release)
+  // Stop a specific note (for key release) - PROPER noteOff
   const stopNote = useCallback((pitch: number): boolean => {
     const currentState = stateRef.current;
     
-    if (!currentState.sampler || !currentState.isReady) {
-      console.log('❌ Cannot stop note: sampler not ready');
+    if (!currentState.synth || !currentState.isReady) {
+      console.log('❌ Cannot stop note: synth not ready');
       return false;
     }
 
     try {
-      // For Soundfont2Sampler, we need to stop all notes since stopId might not work
-      // This is a limitation of the Soundfont2Sampler vs SplendidGrandPiano
-      currentState.sampler.stop();
+      // Use SpessaSynth's noteOff method
+      // We need to determine which channel the note is on
+      // For now, we'll use channel 0 (the default channel for manual playing)
+      const channel = 0;
+      
+      console.log(`🛑 Stopping SpessaSynth note: channel=${channel}, pitch=${pitch}`);
+      currentState.synth.noteOff(channel, pitch);
       
       // Remove from playing notes
       setSoundFontState(prev => ({
@@ -538,7 +371,7 @@ export const useSoundFontManager = () => {
         playingNotes: new Set([...prev.playingNotes].filter(note => note !== pitch))
       }));
       
-      console.log(`🛑 Stopped note: ${pitch} (stopped all notes due to Soundfont2Sampler limitation)`);
+      console.log(`✅ Stopped note: ${pitch}`);
       return true;
     } catch (err) {
       console.error('❌ Failed to stop note:', err);
@@ -550,13 +383,19 @@ export const useSoundFontManager = () => {
   const stopAllNotes = useCallback((): boolean => {
     const currentState = stateRef.current;
     
-    if (!currentState.sampler) {
-      console.log('❌ Cannot stop notes: no sampler');
+    if (!currentState.synth) {
+      console.log('❌ Cannot stop notes: no synth');
       return false;
     }
 
     try {
-      currentState.sampler.stop();
+      // Stop all notes on all channels (0-15)
+      for (let channel = 0; channel < 16; channel++) {
+        // Stop all notes on this channel (pitch 0-127)
+        for (let pitch = 0; pitch < 128; pitch++) {
+          currentState.synth.noteOff(channel, pitch);
+        }
+      }
       
       // Clear playing notes
       setSoundFontState(prev => ({
@@ -564,7 +403,7 @@ export const useSoundFontManager = () => {
         playingNotes: new Set()
       }));
       
-      console.log('🛑 All notes stopped');
+      console.log('🛑 All notes stopped on all channels');
       return true;
     } catch (err) {
       console.error('❌ Failed to stop all notes:', err);
@@ -574,7 +413,7 @@ export const useSoundFontManager = () => {
 
   // Mute the instrument
   const mute = useCallback(() => {
-    console.log('🔇 Muting SoundFont instrument');
+    console.log('🔇 Muting SpessaSynth instrument');
     setSoundFontState(prev => ({
       ...prev,
       isMuted: true
@@ -587,7 +426,7 @@ export const useSoundFontManager = () => {
 
   // Unmute the instrument
   const unmute = useCallback(() => {
-    console.log('🔊 Unmuting SoundFont instrument');
+    console.log('🔊 Unmuting SpessaSynth instrument');
     setSoundFontState(prev => ({
       ...prev,
       isMuted: false

@@ -283,9 +283,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       if (gameEngineRef.current) {
         gameEngineRef.current.destroy();
       }
-      if (soundFontState.sampler) {
-        soundFontState.sampler.disconnect();
-      }
+      // SpessaSynth Synthetizer doesn't have a disconnect method
+      // It will be garbage collected automatically
     };
   }, []); // Empty dependency array to run on mount
 
@@ -294,11 +293,17 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     if (gameEngineRef.current && soundFontState.isReady) {
       console.log('🎹 Setting SoundFont callback - both GameEngine and SoundFont are ready!');
       console.log(`🔍 SoundFont ready state:`, {
-        samplerExists: !!soundFontState.sampler,
-        isReady: soundFontState.isReady,
-        contextState: soundFontState.sampler?.context?.state
+        synthExists: !!soundFontState.synth,
+        isReady: soundFontState.isReady
       });
-      gameEngineRef.current.setSoundFontCallback(playNote);
+      
+      // Create a wrapper callback that matches GameEngine's expected signature
+      const soundFontCallback = (pitch: number, velocity: number, duration: number): boolean => {
+        const result = playNote(pitch, velocity, duration);
+        return result !== false; // Convert number | false to boolean
+      };
+      
+      gameEngineRef.current.setSoundFontCallback(soundFontCallback);
     }
   }, [gameEngineRef.current, soundFontState.isReady, playNote]);
 
@@ -323,7 +328,14 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           // CRITICAL: Set the callback one more time right before starting
           if (gameEngineRef.current && soundFontState.isReady) {
             console.log('🎹 Final SoundFont callback setup before game start');
-            gameEngineRef.current.setSoundFontCallback(playNote);
+            
+            // Create a wrapper callback that matches GameEngine's expected signature
+            const soundFontCallback = (pitch: number, velocity: number, duration: number): boolean => {
+              const result = playNote(pitch, velocity, duration);
+              return result !== false; // Convert number | false to boolean
+            };
+            
+            gameEngineRef.current.setSoundFontCallback(soundFontCallback);
           }
           
           // Start both game and background audio at exactly the same time
@@ -476,11 +488,13 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         return next;
       });
       
-      // Note: We're not calling stopNote here anymore since Soundfont2Sampler
-      // doesn't support individual note stopping like SplendidGrandPiano
-      // Notes will stop automatically after their duration
+      // NOTE OFF - Stop the note when key is released (like a real piano)
+      if (soundFontState.isReady && stopNote) {
+        console.log(`🎹 Stopping sound for key release: pitch=${targetPitch}`);
+        stopNote(targetPitch);
+      }
     }
-  }, [keyToPitch]);
+  }, [keyToPitch, soundFontState.isReady, stopNote]);
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyPress);
