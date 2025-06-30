@@ -82,6 +82,7 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
   const [gameTime, setGameTime] = useState(0);
   const [activeNotes, setActiveNotes] = useState<Note[]>([]);
   const [pressedKeys, setPressedKeys] = useState<Set<number>>(new Set());
+  const [newlyPressedKeys, setNewlyPressedKeys] = useState<Set<number>>(new Set());
   const [score, setScore] = useState(0);
   const [hitNotes, setHitNotes] = useState(0);
   const [totalNotes, setTotalNotes] = useState(0);
@@ -139,13 +140,13 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
     });
   };
 
-  const checkHitNotes = (notes: Note[], pressedKeys: Set<number>): number => {
+  const checkHitNotes = (notes: Note[], newlyPressedKeys: Set<number>): number => {
     let hitCount = 0;
     notes.forEach(note => {
-      // Only allow hit if within hit window at note start
+      // Only allow hit if within hit window at note start AND key was just pressed
       if (
         Math.abs(gameTime - note.start_time) <= 0.2 && // 200ms window
-        pressedKeys.has(note.note) &&
+        newlyPressedKeys.has(note.note) &&
         !note.hit &&
         !note.missed
       ) {
@@ -192,13 +193,16 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
       const updatedNotes = updateNotes(activeNotes, newGameTime);
       setActiveNotes(updatedNotes);
 
-      // Check for hits
-      const newHits = checkHitNotes(updatedNotes, pressedKeys);
+      // Check for hits using newly pressed keys
+      const newHits = checkHitNotes(updatedNotes, newlyPressedKeys);
       if (newHits > 0) {
         setHitNotes(prev => prev + newHits);
         setCurrentCombo(prev => prev + newHits);
         setScore(prev => prev + newHits * 100 * (1 + (currentCombo + newHits) * 0.1));
       }
+
+      // Clear newly pressed keys after checking for hits
+      setNewlyPressedKeys(new Set());
 
       // Check for missed notes
       const missedNotes = checkMissedNotes(updatedNotes);
@@ -228,7 +232,7 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isPlaying, isPaused, activeNotes, pressedKeys, currentCombo]);
+  }, [isPlaying, isPaused, activeNotes, pressedKeys, newlyPressedKeys, currentCombo]);
 
   // Keyboard input handling
   const keyToNote: { [key: string]: number } = {
@@ -252,7 +256,15 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
     if (keyToNote[event.code] !== undefined) {
       event.preventDefault();
       const note = keyToNote[event.code];
-      setPressedKeys(prev => new Set([...prev, note]));
+      setPressedKeys(prev => {
+        const wasAlreadyPressed = prev.has(note);
+        const next = new Set([...prev, note]);
+        // Only add to newly pressed if it wasn't already pressed (prevents key repeat)
+        if (!wasAlreadyPressed) {
+          setNewlyPressedKeys(prevNewly => new Set([...prevNewly, note]));
+        }
+        return next;
+      });
     }
     
     if (event.code === 'Space') {
@@ -505,6 +517,7 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
     setFullCombo(true);
     setShowScore(false);
     setPressedKeys(new Set());
+    setNewlyPressedKeys(new Set());
     
     const initialNotes = processMidiEvents(SAMPLE_MIDI_EVENTS, SAMPLE_SONG.bpm);
     setActiveNotes(initialNotes);
@@ -606,7 +619,8 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
         <p>🎹 Keyboard Controls:</p>
         <p>• A,W,S,E,D,F,T,G,Y,H,U,J,K - Piano keys</p>
         <p>• SPACE - Start/Pause • ESC - Pause</p>
-        <p>• Hit the notes when they reach the red line!</p>
+        <p>• Press keys at the right time when notes reach the red line!</p>
+        <p>• Don't hold keys - you must press them at the exact moment!</p>
       </div>
     </div>
   );
