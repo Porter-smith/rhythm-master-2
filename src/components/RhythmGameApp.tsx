@@ -24,6 +24,7 @@ export const RhythmGameApp: React.FC = () => {
   const [audioOffset, setAudioOffset] = useState<number>(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [audioEngine] = useState(() => new AudioEngine());
+  const [controlType, setControlType] = useState<'keyboard' | 'midi'>('keyboard');
   
   // Replay viewing state
   const [currentReplay, setCurrentReplay] = useState<GameReplay | null>(null);
@@ -154,6 +155,8 @@ export const RhythmGameApp: React.FC = () => {
             onAudioOffsetChange={setAudioOffset}
             onCalibrate={handleCalibration}
             onBack={() => transitionTo('menu')}
+            controlType={controlType}
+            onControlTypeChange={setControlType}
           />
         );
       case 'score':

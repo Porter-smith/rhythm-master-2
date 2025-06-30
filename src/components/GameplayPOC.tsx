@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeft, Play, Pause } from 'lucide-react';
 import { useSoundFontManager } from './GameplayScreen/SoundFontManager';
+import { MidiInstrument, ConnectMidi } from '../hooks/useMidiController';
+import { useSettingsStore } from '../stores/settingsStore';
 
 interface Note {
   note: number;
@@ -62,7 +64,7 @@ const SAMPLE_SONG: Song = {
   selected_difficulty: 0,
   soundFont: 'https://smpldsnds.github.io/soundfonts/soundfonts/yamaha-grand-lite.sf2' // Test SoundFont
 };
-
+ 
 // Sample MIDI events (C major scale, each note a full measure, first note starts at second measure)
 const SAMPLE_MIDI_EVENTS = [
   [4, 'note_start', 60, 4],   // C4, measure 2
@@ -80,9 +82,18 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
   const animationFrameRef = useRef<number>();
   const startTimeRef = useRef<number>(0);
   
+  // Get control type from settings store
+  const controlType = useSettingsStore(state => state.controlType);
+  
+  // Add MIDI logging state
+  const [midiLog, setMidiLog] = useState<string[]>([]);
+  const [lastNote, setLastNote] = useState<string>('None');
+  const [lastVelocity, setLastVelocity] = useState<number>(0);
+
   // SoundFont state using the manager
   const { soundFontState, loadSoundFont, playNote, stopNote, stopAllNotes } = useSoundFontManager();
   
+  // Initialize game state
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [gameTime, setGameTime] = useState(0);
@@ -102,26 +113,287 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
   // Game settings
   const scrollSpeed = (SAMPLE_SONG.bpm / 60) * LINE_SPACING * 2;
 
-  // Initialize SoundFont when component mounts
+  // Helper function to convert MIDI note number to note name
+  const getNoteString = (note: number): string => {
+    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const octave = Math.floor(note / 12) - 1;
+    const noteName = noteNames[note % 12];
+    return `${noteName}${octave}`;
+  };
+
+  // FL Studio style keyboard mapping
+  const keyToNote: { [key: string]: number } = {
+    // Lower octave (Z-M row)
+    'KeyZ': 60,  // C4
+    'KeyX': 62,  // D4
+    'KeyC': 64,  // E4
+    'KeyV': 65,  // F4
+    'KeyB': 67,  // G4
+    'KeyN': 69,  // A4
+    'KeyM': 71,  // B4
+    // Black keys (S-L row)
+    'KeyS': 61,  // C#4
+    'KeyD': 63,  // D#4
+    'KeyF': 66,  // F#4
+    'KeyG': 68,  // G#4
+    'KeyH': 70,  // A#4
+    // Upper octave (Q-P row)
+    'KeyQ': 72,  // C5
+    'KeyW': 74,  // D5
+    'KeyE': 76,  // E5
+    'KeyR': 77,  // F5
+    'KeyT': 79,  // G5
+    'KeyY': 81,  // A5
+    'KeyU': 83,  // B5
+  };
+
+  const handleKeyPress = useCallback((event: KeyboardEvent) => {
+    if (keyToNote[event.code] !== undefined) {
+      event.preventDefault();
+      const targetPitch = keyToNote[event.code];
+      
+      // Only play sound if this key wasn't already pressed
+      if (!keysCurrentlyPressed.has(event.code)) {
+        // Add key to currently pressed keys
+        setKeysCurrentlyPressed(prev => new Set([...prev, event.code]));
+        
+        // Add key to pressed keys (visual feedback)
+        setPressedKeys(prev => {
+          const next = new Set([...prev, targetPitch]);
+          console.log(`🎹 Key pressed: ${event.code} (pitch ${targetPitch}), pressedKeys now:`, Array.from(next));
+          return next;
+        });
+        
+        // Add to newly pressed keys for game logic
+        setNewlyPressedKeys(prevNewly => new Set([...prevNewly, targetPitch]));
+        
+        // ALWAYS play the sound when key is first pressed (like a real piano)
+        console.log("soundfo")
+        if (soundFontState.isReady && playNote) {
+          const velocity = 80; // Standard velocity for manual key presses
+          const duration = 0.5; // Standard duration for manual key presses
+          playNote(targetPitch, velocity, duration);
+        }
+      }
+    }
+    
+    if (event.code === 'Space') {
+      event.preventDefault();
+      if (isPlaying) {
+        setIsPaused(prev => !prev);
+      } else {
+        setIsPlaying(true);
+        startTimeRef.current = performance.now();
+      }
+    }
+    
+    if (event.code === 'Escape') {
+      setIsPaused(prev => !prev);
+    }
+  }, [isPlaying, keysCurrentlyPressed, soundFontState.isReady, playNote]);
+
+  const handleKeyRelease = useCallback((event: KeyboardEvent) => {
+    if (keyToNote[event.code] !== undefined) {
+      const targetPitch = keyToNote[event.code];
+      
+      // Remove from currently pressed keys
+      setKeysCurrentlyPressed(prev => {
+        const next = new Set(prev);
+        next.delete(event.code);
+        return next;
+      });
+      
+      // Remove from pressed keys (visual feedback)
+      setPressedKeys(prev => {
+        const next = new Set(prev);
+        next.delete(targetPitch);
+        console.log(`🎹 Key released: ${event.code} (pitch ${targetPitch}), pressedKeys now:`, Array.from(next));
+        return next;
+      });
+      
+      // Stop the note sound
+      if (soundFontState.isReady && stopNote) {
+        stopNote(targetPitch);
+      }
+      
+      // If a note is currently hit and not finished, mark as missed
+      setActiveNotes(prevNotes => prevNotes.map(note => {
+        if (
+          note.note === targetPitch &&
+          note.hit &&
+          !note.missed &&
+          gameTime < note.start_time + note.length
+        ) {
+          return { ...note, missed: true };
+        }
+        return note;
+      }));
+    }
+  }, [gameTime, soundFontState.isReady, stopNote]);
+
+  // Only add keyboard event listeners if in keyboard mode
   useEffect(() => {
-    console.log('🎹 GameplayPOC: Initializing SoundFont...');
-    const initializeSoundFont = async () => {
+    if (controlType === 'keyboard') {
+      document.addEventListener('keydown', handleKeyPress);
+      document.addEventListener('keyup', handleKeyRelease);
+      
+      // Handle window blur to reset pressed keys (prevents stuck keys)
+      const handleWindowBlur = () => {
+        setKeysCurrentlyPressed(new Set());
+        setPressedKeys(new Set());
+        // Stop all notes when window loses focus
+        if (soundFontState.isReady && stopAllNotes) {
+          stopAllNotes();
+        }
+      };
+      
+      window.addEventListener('blur', handleWindowBlur);
+      
+      return () => {
+        document.removeEventListener('keydown', handleKeyPress);
+        document.removeEventListener('keyup', handleKeyRelease);
+        window.removeEventListener('blur', handleWindowBlur);
+      };
+    }
+  }, [handleKeyPress, handleKeyRelease, controlType, soundFontState.isReady, stopAllNotes]);
+
+  // Create MIDI handlers with proper state access
+  const handleMidiStart = useCallback((note: { note: number; velocity: number }) => {
+    const targetPitch = note.note;
+    const noteStr = getNoteString(targetPitch);
+    
+    // Use fixed velocity of 1 (127 in MIDI)
+    const scaledVelocity = 127;
+    
+    console.log(`🎹 MIDI Note On: pitch ${targetPitch}, velocity 1.0`);
+    
+    // Update MIDI log display
+    setLastNote(noteStr);
+    setLastVelocity(1.0);
+    setMidiLog(prev => [`Note On: ${noteStr} (velocity: 1.0)`, ...prev.slice(0, 9)]);
+    
+    // Add to pressed keys (visual feedback)
+    setPressedKeys(prev => {
+      const next = new Set([...prev, targetPitch]);
+      return next;
+    });
+    
+    // Only update game state if we're actively playing
+    if (isPlaying && !isPaused) {
+      // Add to newly pressed keys for game logic
+      setNewlyPressedKeys(prevNewly => new Set([...prevNewly, targetPitch]));
+    }
+    
+    // Always play sound through SoundFont, regardless of game state
+    if (soundFontState.isReady && playNote) {
+      console.log('🎹 Playing note through SoundFont:', {
+        pitch: targetPitch,
+        velocity: scaledVelocity,
+        soundFontState: {
+          isReady: soundFontState.isReady
+        }
+      });
+      playNote(targetPitch, scaledVelocity, 0.5);
+    } else {
+      console.log('❌ Cannot play note - SoundFont not ready:', {
+        isReady: soundFontState.isReady,
+        hasPlayNote: !!playNote
+      });
+    }
+  }, [soundFontState.isReady, playNote, isPlaying, isPaused]);
+
+  const handleMidiStop = useCallback((note: { stopId: number }) => {
+    const targetPitch = note.stopId;
+    const noteStr = getNoteString(targetPitch);
+    
+    console.log(`🎹 MIDI Note Off: pitch ${targetPitch}`);
+    
+    // Update MIDI log display
+    setMidiLog(prev => [`Note Off: ${noteStr}`, ...prev.slice(0, 9)]);
+    
+    // Remove from pressed keys (visual feedback)
+    setPressedKeys(prev => {
+      const next = new Set(prev);
+      next.delete(targetPitch);
+      return next;
+    });
+    
+    // Always stop sound, regardless of game state
+    if (soundFontState.isReady && stopNote) {
+      console.log('🎹 Stopping note through SoundFont:', {
+        pitch: targetPitch,
+        soundFontState: {
+          isReady: soundFontState.isReady
+        }
+      });
+      stopNote(targetPitch);
+    }
+    
+    // Only update game state if we're actively playing
+    if (isPlaying && !isPaused) {
+      // If a note is currently hit and not finished, mark as missed
+      setActiveNotes(prevNotes => prevNotes.map(note => {
+        if (
+          note.note === targetPitch &&
+          note.hit &&
+          !note.missed &&
+          gameTime < note.start_time + note.length
+        ) {
+          return { ...note, missed: true };
+        }
+        return note;
+      }));
+    }
+  }, [soundFontState.isReady, stopNote, isPlaying, isPaused, gameTime]);
+
+  // Update midiInstrument ref whenever handlers change
+  const midiInstrument = {
+    start: handleMidiStart,
+    stop: handleMidiStop
+  };
+
+  // Initialize audio context and SoundFont
+  useEffect(() => {
+    const initAudio = async () => {
       try {
-        console.log(`🎹 Loading SoundFont: ${SAMPLE_SONG.soundFont}`);
-        const success = await loadSoundFont(SAMPLE_SONG.soundFont!);
-        if (success) {
-          console.log('✅ SoundFont loaded successfully in GameplayPOC');
-          setSoundFontLoaded(true);
-        } else {
-          console.error('❌ Failed to load SoundFont in GameplayPOC');
+        // Get audio context
+        const context = new AudioContext();
+        await context.resume();
+        console.log('🎵 Audio context initialized:', context.state);
+
+        // Load SoundFont if not already loaded
+        if (!soundFontLoaded && SAMPLE_SONG.soundFont) {
+          console.log('🎹 Loading SoundFont:', SAMPLE_SONG.soundFont);
+          const success = await loadSoundFont(SAMPLE_SONG.soundFont);
+          if (success) {
+            console.log('✅ SoundFont loaded successfully');
+            setSoundFontLoaded(true);
+          } else {
+            console.error('❌ Failed to load SoundFont');
+          }
         }
       } catch (error) {
-        console.error('❌ Error loading SoundFont:', error);
+        console.error('❌ Error initializing audio:', error);
       }
     };
 
-    initializeSoundFont();
-  }, [loadSoundFont]);
+    initAudio();
+
+    // Cleanup function
+    return () => {
+      if (soundFontState.synth) {
+        console.log('🧹 Cleaning up SoundFont...');
+        stopAllNotes?.();
+      }
+    };
+  }, []); // Run once on mount
+
+  // Initialize notes
+  useEffect(() => {
+    const initialNotes = processMidiEvents(SAMPLE_MIDI_EVENTS, SAMPLE_SONG.bpm);
+    setActiveNotes(initialNotes);
+    setTotalNotes(initialNotes.length);
+  }, []); // Only run once on mount
 
   // Helper functions
   const isSharpNote = (note: number): boolean => {
@@ -202,13 +474,6 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
     return missedCount;
   };
 
-  // Initialize game
-  useEffect(() => {
-    const initialNotes = processMidiEvents(SAMPLE_MIDI_EVENTS, SAMPLE_SONG.bpm);
-    setActiveNotes(initialNotes);
-    setTotalNotes(initialNotes.length);
-  }, []);
-
   // Game loop
   useEffect(() => {
     if (!isPlaying || isPaused) return;
@@ -262,142 +527,6 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
       }
     };
   }, [isPlaying, isPaused, activeNotes, pressedKeys, newlyPressedKeys, currentCombo]);
-
-  // FL Studio style keyboard mapping
-  const keyToNote: { [key: string]: number } = {
-    // Lower octave (Z-M row)
-    'KeyZ': 60,  // C4
-    'KeyX': 62,  // D4
-    'KeyC': 64,  // E4
-    'KeyV': 65,  // F4
-    'KeyB': 67,  // G4
-    'KeyN': 69,  // A4
-    'KeyM': 71,  // B4
-    // Black keys (S-L row)
-    'KeyS': 61,  // C#4
-    'KeyD': 63,  // D#4
-    'KeyF': 66,  // F#4
-    'KeyG': 68,  // G#4
-    'KeyH': 70,  // A#4
-    // Upper octave (Q-P row)
-    'KeyQ': 72,  // C5
-    'KeyW': 74,  // D5
-    'KeyE': 76,  // E5
-    'KeyR': 77,  // F5
-    'KeyT': 79,  // G5
-    'KeyY': 81,  // A5
-    'KeyU': 83,  // B5
-  };
-
-  const handleKeyPress = useCallback((event: KeyboardEvent) => {
-    if (keyToNote[event.code] !== undefined) {
-      event.preventDefault();
-      const targetPitch = keyToNote[event.code];
-      
-      // Only play sound if this key wasn't already pressed (prevent repeated playing when held)
-      if (!keysCurrentlyPressed.has(event.code)) {
-        // Add key to currently pressed keys
-        setKeysCurrentlyPressed(prev => new Set([...prev, event.code]));
-        
-        // Add key to pressed keys (visual feedback)
-        setPressedKeys(prev => {
-          const next = new Set([...prev, targetPitch]);
-          console.log(`🎹 Key pressed: ${event.code} (pitch ${targetPitch}), pressedKeys now:`, Array.from(next));
-          return next;
-        });
-        
-        // Add to newly pressed keys for game logic
-        setNewlyPressedKeys(prevNewly => new Set([...prevNewly, targetPitch]));
-        
-        // ALWAYS play the sound when key is first pressed (like a real piano)
-        if (soundFontState.isReady && playNote) {
-          const velocity = 80; // Standard velocity for manual key presses
-          const duration = 0.5; // Standard duration for manual key presses
-          console.log(`🎹 Playing sound for key press: pitch=${targetPitch}, velocity=${velocity}`);
-          playNote(targetPitch, velocity, duration);
-        } else {
-          console.log(`🎹 Cannot play sound: soundFontReady=${soundFontState.isReady}, playNote=${!!playNote}`);
-        }
-      }
-    }
-    
-    if (event.code === 'Space') {
-      event.preventDefault();
-      if (isPlaying) {
-        setIsPaused(prev => !prev);
-      } else {
-        setIsPlaying(true);
-        startTimeRef.current = performance.now();
-      }
-    }
-    
-    if (event.code === 'Escape') {
-      setIsPaused(prev => !prev);
-    }
-  }, [isPlaying, keysCurrentlyPressed, soundFontState.isReady, playNote]);
-
-  const handleKeyRelease = useCallback((event: KeyboardEvent) => {
-    if (keyToNote[event.code] !== undefined) {
-      const targetPitch = keyToNote[event.code];
-      
-      // Remove from currently pressed keys
-      setKeysCurrentlyPressed(prev => {
-        const next = new Set(prev);
-        next.delete(event.code);
-        return next;
-      });
-      
-      // Remove from pressed keys (visual feedback)
-      setPressedKeys(prev => {
-        const next = new Set(prev);
-        next.delete(targetPitch);
-        console.log(`🎹 Key released: ${event.code} (pitch ${targetPitch}), pressedKeys now:`, Array.from(next));
-        return next;
-      });
-      
-      // NOTE OFF - Stop the note when key is released (like a real piano)
-      if (soundFontState.isReady && stopNote) {
-        console.log(`🎹 Stopping sound for key release: pitch=${targetPitch}`);
-        stopNote(targetPitch);
-      }
-      
-      // If a note is currently hit and not finished, mark as missed
-      setActiveNotes(prevNotes => prevNotes.map(note => {
-        if (
-          note.note === targetPitch &&
-          note.hit &&
-          !note.missed &&
-          gameTime < note.start_time + note.length
-        ) {
-          return { ...note, missed: true };
-        }
-        return note;
-      }));
-    }
-  }, [gameTime, soundFontState.isReady, stopNote]);
-
-  useEffect(() => {
-    document.addEventListener('keydown', handleKeyPress);
-    document.addEventListener('keyup', handleKeyRelease);
-    
-    // Handle window blur to reset pressed keys (prevents stuck keys)
-    const handleWindowBlur = () => {
-      setKeysCurrentlyPressed(new Set());
-      setPressedKeys(new Set());
-      // Stop all notes when window loses focus
-      if (soundFontState.isReady && stopAllNotes) {
-        stopAllNotes();
-      }
-    };
-    
-    window.addEventListener('blur', handleWindowBlur);
-    
-    return () => {
-      document.removeEventListener('keydown', handleKeyPress);
-      document.removeEventListener('keyup', handleKeyRelease);
-      window.removeEventListener('blur', handleWindowBlur);
-    };
-  }, [handleKeyPress, handleKeyRelease, soundFontState.isReady, stopAllNotes]);
 
   // Render game
   const renderGame = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
@@ -502,7 +631,7 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
       ctx.fillStyle = '#ffffff';
       ctx.font = '14px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText(getNoteNameFromPitch(note.note), noteStartX + noteWidth / 2, y + 5);
+      ctx.fillText(getNoteString(note.note), noteStartX + noteWidth / 2, y + 5);
     });
 
     // Show pressed keys on the hit line
@@ -626,14 +755,6 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
     setActiveNotes(initialNotes);
   };
 
-  // Helper function to convert MIDI pitch to note name
-  const getNoteNameFromPitch = (pitch: number): string => {
-    const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-    const octave = Math.floor(pitch / 12) - 1;
-    const noteIndex = pitch % 12;
-    return `${noteNames[noteIndex]}${octave}`;
-  };
-
   if (showScore) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black flex items-center justify-center">
@@ -691,15 +812,22 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
         </div>
 
         <div className="flex items-center space-x-4">
-        <button
-          onClick={toggleGame}
-          className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
-        >
+          <button
+            onClick={toggleGame}
+            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
+          >
             {isPlaying && !isPaused ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
             <span>{isPlaying && !isPaused ? 'Pause' : 'Start'}</span>
           </button>
         </div>
       </div>
+
+      {/* Hidden ConnectMidi component for MIDI mode */}
+      {controlType === 'midi' && (
+        <div className="hidden">
+          <ConnectMidi instrument={midiInstrument} />
+        </div>
+      )}
 
       {/* Game Canvas */}
       <div className="flex-1 flex items-center justify-center p-4">
@@ -710,6 +838,25 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
           className="max-w-full max-h-full bg-black"
         />
       </div>
+
+      {/* MIDI Input Display - Only show in MIDI mode */}
+      {controlType === 'midi' && (
+        <div className="absolute bottom-32 right-6 bg-black/80 rounded-lg p-4 w-80">
+          <div className="text-white mb-3">
+            <span className="text-white/60">Last Note: </span>
+            <span className="font-mono">{lastNote}</span>
+            <span className="text-white/60 ml-4">Velocity: </span>
+            <span className="font-mono">{lastVelocity}</span>
+          </div>
+          <div className="font-mono text-sm text-green-400 bg-black/60 p-3 rounded h-32 overflow-y-auto">
+            {midiLog.map((log, index) => (
+              <div key={index} className="mb-1">
+                {log}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Pause Overlay */}
       {isPaused && (
@@ -728,19 +875,21 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
 
       {/* Instructions */}
       <div className="absolute bottom-6 left-6 text-white/70 text-sm">
-        <p>🎹 Keyboard Controls:</p>
-        <p>• Z,X,C,V,B,N,M (white keys) • S,D,F,G,H (black keys) • Q,W,E,R,T,Y,U (upper octave)</p>
-        <p>• SPACE - Start/Pause • ESC - Pause</p>
+        <p>🎹 Controls:</p>
+        {controlType === 'keyboard' ? (
+          <>
+            <p>• Z,X,C,V,B,N,M (white keys) • S,D,F,G,H (black keys) • Q,W,E,R,T,Y,U (upper octave)</p>
+            <p>• SPACE - Start/Pause • ESC - Pause</p>
+          </>
+        ) : (
+          <>
+            <p>• Use your MIDI controller to play the notes</p>
+            <p>• SPACE - Start/Pause • ESC - Pause</p>
+          </>
+        )}
         <p>• Press keys at the right time when notes reach the red line!</p>
-        <p>• Keys work like a piano - press to play notes with SoundFont audio!</p>
         {soundFontState.isReady && (
           <p className="text-green-400">🎵 Professional piano audio with Yamaha Grand SoundFont</p>
-        )}
-        {soundFontState.isLoading && (
-          <p className="text-yellow-400">🎵 Loading professional piano SoundFont...</p>
-        )}
-        {soundFontState.error && (
-          <p className="text-red-400">❌ SoundFont loading failed - using system audio</p>
         )}
       </div>
     </div>

@@ -1,8 +1,18 @@
 import React from 'react';
 import { Play, Settings, Music, FileMusic, X, Piano, TestTube, Headphones } from 'lucide-react';
 
+interface Song {
+  id: string;
+  title: string;
+  artist: string;
+  duration: number;
+  difficulties: string[];
+  bpm: number;
+  soundFont?: string;
+}
+
 interface MainMenuProps {
-  onPlay: () => void;
+  onPlay: (song: Song) => void;
   onSettings: () => void;
   onMusicPlayer: () => void;
   onSmplrPlayer: () => void;
@@ -24,6 +34,17 @@ export const MainMenu: React.FC<MainMenuProps> = ({
   onGameplayPOC,
   onQuit 
 }) => {
+  // Sample song for testing
+  const sampleSong: Song = {
+    id: 'sample_song',
+    title: 'Sample Song',
+    artist: 'Test Artist',
+    duration: 180,
+    difficulties: ['easy', 'medium', 'hard'],
+    bpm: 120,
+    soundFont: 'https://smpldsnds.github.io/soundfonts/soundfonts/yamaha-grand-lite.sf2'
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-8">
       {/* Game Title */}
@@ -42,7 +63,7 @@ export const MainMenu: React.FC<MainMenuProps> = ({
       <div className="flex flex-col items-center space-y-6">
         {/* Play Button */}
         <button
-          onClick={onPlay}
+          onClick={() => onPlay(sampleSong)}
           className="group relative w-80 h-20 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 text-white font-bold text-xl rounded-xl shadow-2xl transform transition-all duration-300 hover:scale-110 hover:shadow-green-500/25 animate-pulse"
           style={{ animationDuration: '2s' }}
         >

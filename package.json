@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/webmidi": "^2.1.0",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -19,7 +20,9 @@
     "spessasynth_core": "^3.26.34",
     "spessasynth_lib": "^3.26.31",
     "tonal": "^5.0.0",
-    "tone": "^14.7.77"
+    "tone": "^14.7.77",
+    "webmidi": "^3.1.12",
+    "zustand": "^5.0.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
