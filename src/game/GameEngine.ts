@@ -167,6 +167,8 @@ export class GameEngine {
     this.isPlaying = true;
     this.startTime = performance.now();
     
+
+    
     console.log(`▶️ Game started at time: ${this.startTime}`);
   }
 

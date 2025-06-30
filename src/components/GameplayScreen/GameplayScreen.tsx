@@ -111,15 +111,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     isGameActuallyPlaying: gameState === 'playing'
   };
 
-  // Initialize game with proper loading phases - ONLY RUN ONCE
+  // Initialize game with proper loading phases
   useEffect(() => {
-    // Prevent multiple initializations
-    if (initializationRef.current) {
-      console.log('🔄 Initialization already started, skipping...');
-      return;
-    }
-
-    initializationRef.current = true;
     console.log('🎮 Starting initialization...');
 
     const initializeGame = async () => {
@@ -271,6 +264,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     initializeGame();
 
     return () => {
+      console.log('🧹 Cleaning up GameplayScreen...');
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -281,7 +275,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         soundFontState.sampler.disconnect();
       }
     };
-  }, []); // Empty dependency array - only run once on mount
+  }, []); // Empty dependency array to run on mount
 
   // Set SoundFont callback when GameEngine is ready AND SoundFont is ready
   useEffect(() => {
@@ -302,6 +296,13 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       const timer = setTimeout(() => {
         if (countdown === 1) {
           console.log('🎮 Countdown finished - starting game and background audio!');
+          
+          // Initialize notes before setting game state to playing
+          if (gameEngineRef.current) {
+            const initialState = gameEngineRef.current.update(performance.now());
+            setFilteredNotes(initialState.notes);
+          }
+          
           setGameState('playing');
           
           // CRITICAL: Set the callback one more time right before starting
@@ -703,6 +704,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           {backgroundAudioReady && gameState !== 'playing' && (
             <div className="text-xs text-gray-400">🎼 Background Ready</div>
           )}
+          {!backgroundAudioReady && midiFileForBackground && (
+            <div className="text-xs text-red-400">❌ Background Audio Error</div>
+          )}
         </div>
       </div>
 
@@ -718,6 +722,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             )}
             {backgroundAudioReady && (
               <p className="text-orange-400 text-lg">🎼 Background Audio Ready!</p>
+            )}
+            {!backgroundAudioReady && midiFileForBackground && (
+              <p className="text-red-400 text-lg">❌ Background Audio Failed to Load</p>
             )}
           </div>
         </div>
@@ -736,6 +743,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             {backgroundAudioReady && (
               <p className="text-orange-400 mt-1">🎼 Background Audio Paused</p>
             )}
+            {!backgroundAudioReady && midiFileForBackground && (
+              <p className="text-red-400 mt-1">❌ Background Audio Error</p>
+            )}
           </div>
         </div>
       )}
@@ -751,6 +761,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         )}
         {backgroundAudioReady && gameState !== 'playing' && (
           <p className="text-gray-400">🎼 Background instruments ready (will start with game)</p>
+        )}
+        {!backgroundAudioReady && midiFileForBackground && (
+          <p className="text-red-400">❌ Background audio failed to initialize - some instruments may be missing</p>
         )}
       </div>
     </div>
