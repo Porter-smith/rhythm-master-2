@@ -64,12 +64,13 @@ export class BackgroundAudioManager {
       const midi = new MIDI(midiFile);
       this.sequencer.loadNewSongList([midi]);
       
-      // IMPORTANT: Immediately pause after loading to prevent auto-play
+      // IMPORTANT: Immediately pause and reset to beginning
+      this.sequencer.stop();
       this.sequencer.pause();
       this.isPlaying = false;
       this.hasStartedOnce = false;
       
-      console.log('✅ MIDI loaded for background audio (paused, waiting for game start)');
+      console.log('✅ MIDI loaded for background audio (paused at beginning, ready to start)');
       console.log('🎹 Detected instruments:', Array.from(this.channelInstruments.entries()).map(([ch, prog]) => 
         `Channel ${ch + 1}: Program ${prog}`
       ));
@@ -173,6 +174,19 @@ export class BackgroundAudioManager {
     }
   }
 
+  prepareToStart(): void {
+    if (!this.sequencer || !this.isReady) {
+      console.log('⚠️ Background audio not ready to prepare');
+      return;
+    }
+    
+    console.log('🎼 Preparing background audio (resetting to beginning)');
+    this.sequencer.stop(); // Reset to beginning
+    this.sequencer.pause(); // Make sure we're paused
+    this.isPlaying = false;
+    this.hasStartedOnce = false;
+  }
+
   play(): void {
     if (!this.sequencer || !this.isReady) {
       console.log('⚠️ Background audio not ready to play');
@@ -180,15 +194,9 @@ export class BackgroundAudioManager {
     }
     
     console.log('▶️ Starting background audio playback');
-    
-    // If this is the first time playing, start from beginning
-    if (!this.hasStartedOnce) {
-      this.sequencer.stop(); // Reset to beginning
-      this.hasStartedOnce = true;
-    }
-    
     this.sequencer.play();
     this.isPlaying = true;
+    this.hasStartedOnce = true;
   }
 
   pause(): void {

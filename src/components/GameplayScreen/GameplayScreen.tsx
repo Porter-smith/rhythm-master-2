@@ -296,15 +296,18 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     if (gameState === 'countdown' && countdown > 0) {
       const timer = setTimeout(() => {
         if (countdown === 1) {
-          console.log('🎮 Countdown finished - starting game and background audio!');
+          console.log('🎮 Countdown finished - preparing to start game and audio!');
           
           // Initialize notes before setting game state to playing
           if (gameEngineRef.current) {
             const initialState = gameEngineRef.current.update(performance.now());
             setFilteredNotes(initialState.notes);
           }
-          
-          setGameState('playing');
+
+          // Prepare background audio to start exactly with game
+          if (backgroundAudioRef.current) {
+            backgroundAudioRef.current.prepareToStart();
+          }
           
           // CRITICAL: Set the callback one more time right before starting
           if (gameEngineRef.current && soundFontState.isReady) {
@@ -312,13 +315,15 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             gameEngineRef.current.setSoundFontCallback(playNote);
           }
           
+          // Start both game and background audio at exactly the same time
           gameEngineRef.current?.start();
-          console.log('🎮 Game started with SoundFont support!');
-          console.log(`🔍 Final SoundFont check at game start:`, {
-            samplerExists: !!soundFontState.sampler,
-            isReady: soundFontState.isReady,
-            contextState: soundFontState.sampler?.context?.state
-          });
+          if (backgroundAudioRef.current) {
+            backgroundAudioRef.current.play();
+          }
+          
+          setGameState('playing');
+          
+          console.log('🎮 Game and background audio started simultaneously!');
         } else {
           setCountdown(countdown - 1);
         }
@@ -341,15 +346,20 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       if (gameState === 'playing') {
         setGameState('paused');
         gameEngineRef.current?.pause();
+        if (backgroundAudioRef.current) {
+          backgroundAudioRef.current.pause();
+        }
       } else if (gameState === 'paused') {
         setGameState('playing');
         gameEngineRef.current?.resume();
+        if (backgroundAudioRef.current) {
+          backgroundAudioRef.current.play();
+        }
       }
     } else if (event.code === 'F12' || (event.ctrlKey && event.shiftKey && event.code === 'KeyD')) {
       event.preventDefault();
       setShowDebug(!showDebug);
     } else if (event.code === 'KeyB' && gameState === 'playing') {
-      // Toggle background instruments panel with 'B' key
       event.preventDefault();
       setShowBackgroundPanel(!showBackgroundPanel);
     }
@@ -522,16 +532,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     return [1, 3, 6, 8, 10].includes(noteInOctave);
   };
 
-  const togglePause = () => {
-    if (gameState === 'playing') {
-      setGameState('paused');
-      gameEngineRef.current?.pause();
-    } else if (gameState === 'paused') {
-      setGameState('playing');
-      gameEngineRef.current?.resume();
-    }
-  };
-
   // Handle back button - only allow if not in critical loading phase
   const handleBack = () => {
     if (loadingState.phase === 'loading-soundfont') {
@@ -554,6 +554,23 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     backgroundAudioRef.current = manager;
     setBackgroundAudioReady(true);
     console.log('🎼 Background audio manager is ready (waiting for game to start)');
+  };
+
+  // Handle pause/resume
+  const togglePause = () => {
+    if (gameState === 'playing') {
+      setGameState('paused');
+      gameEngineRef.current?.pause();
+      if (backgroundAudioRef.current) {
+        backgroundAudioRef.current.pause();
+      }
+    } else if (gameState === 'paused') {
+      setGameState('playing');
+      gameEngineRef.current?.resume();
+      if (backgroundAudioRef.current) {
+        backgroundAudioRef.current.play();
+      }
+    }
   };
 
   return (
