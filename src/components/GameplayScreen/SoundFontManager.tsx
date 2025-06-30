@@ -23,6 +23,7 @@ export interface SoundFontState {
   error: string | null;
   selectedInstrument?: { channel: number; instrument: number; name: string };
   isMuted: boolean;
+  playingNotes: Set<number>; // Track which notes are currently playing
 }
 
 export const useSoundFontManager = () => {
@@ -33,7 +34,8 @@ export const useSoundFontManager = () => {
     selectedSoundFont: 'Piano',
     error: null,
     selectedInstrument: undefined,
-    isMuted: false
+    isMuted: false,
+    playingNotes: new Set()
   });
 
   // Use ref to always have access to current state in callbacks
@@ -243,7 +245,8 @@ export const useSoundFontManager = () => {
         selectedSoundFont: soundfontName,
         error: null,
         selectedInstrument: stateRef.current.selectedInstrument,
-        isMuted: stateRef.current.isMuted
+        isMuted: stateRef.current.isMuted,
+        playingNotes: stateRef.current.playingNotes
       };
 
       setSoundFontState(newState);
@@ -261,7 +264,8 @@ export const useSoundFontManager = () => {
         selectedSoundFont: soundfontName,
         error: err instanceof Error ? err.message : 'Unknown error',
         selectedInstrument: stateRef.current.selectedInstrument,
-        isMuted: stateRef.current.isMuted
+        isMuted: stateRef.current.isMuted,
+        playingNotes: stateRef.current.playingNotes
       };
       setSoundFontState(errorState);
       stateRef.current = errorState;
@@ -305,7 +309,7 @@ export const useSoundFontManager = () => {
   }, [loadSoundFont]);
 
   // Play note using SoundFont - ENHANCED for multi-channel support with VOLUME CONTROL
-  const playNote = useCallback((pitch: number, velocity: number = 80, duration: number = 0.5, channel: number = 0): boolean => {
+  const playNote = useCallback((pitch: number, velocity: number = 80, duration: number = 0.5, channel: number = 0): number | false => {
     // ALWAYS use the current state from ref, not the stale closure state
     const currentState = stateRef.current;
     
@@ -359,13 +363,20 @@ export const useSoundFontManager = () => {
           velocity: Math.min(127, velocity * 0.8), // Use scaled velocity
           detune: 0,
           time: currentState.sampler.context.currentTime,
-          duration: duration,
+          duration: duration, // Use the provided duration instead of very long duration
           instrument: instruments[0]
         };
         
         currentState.sampler.start(noteToPlay);
+        
+        // Add to playing notes
+        setSoundFontState(prev => ({
+          ...prev,
+          playingNotes: new Set([...prev.playingNotes, pitch])
+        }));
+        
         console.log(`✅ SoundFont note played successfully: ${pitch} with default instrument "${instruments[0]}" on channel ${channel} (volume balanced)`);
-        return true;
+        return pitch; // Return pitch as stopId
       }
       console.log(`🎹 Available instruments:`, instruments);
       console.log(`🎹 Looking for instrument: "${currentState.selectedInstrument.name}"`);
@@ -480,7 +491,7 @@ export const useSoundFontManager = () => {
         velocity: scaledVelocity, // Use scaled velocity
         detune: 0,
         time: currentState.sampler.context.currentTime,
-        duration: duration,
+        duration: duration, // Use the provided duration instead of very long duration
         instrument: foundInstrument
       };
       
@@ -492,13 +503,74 @@ export const useSoundFontManager = () => {
       });
       
       currentState.sampler.start(noteToPlay);
+      
+      // Add to playing notes
+      setSoundFontState(prev => ({
+        ...prev,
+        playingNotes: new Set([...prev.playingNotes, pitch])
+      }));
+      
       console.log(`✅ SoundFont note played successfully: ${pitch} with instrument "${foundInstrument}" on channel ${channel} (volume balanced)`);
-      return true;
+      return pitch; // Return pitch as stopId
     } catch (err) {
       console.error('❌ Failed to play note with SoundFont:', err);
       return false;
     }
   }, []); // Empty deps - callback never changes, always uses current state
+
+  // Stop a specific note (for key release)
+  const stopNote = useCallback((pitch: number): boolean => {
+    const currentState = stateRef.current;
+    
+    if (!currentState.sampler || !currentState.isReady) {
+      console.log('❌ Cannot stop note: sampler not ready');
+      return false;
+    }
+
+    try {
+      // For Soundfont2Sampler, we need to stop all notes since stopId might not work
+      // This is a limitation of the Soundfont2Sampler vs SplendidGrandPiano
+      currentState.sampler.stop();
+      
+      // Remove from playing notes
+      setSoundFontState(prev => ({
+        ...prev,
+        playingNotes: new Set([...prev.playingNotes].filter(note => note !== pitch))
+      }));
+      
+      console.log(`🛑 Stopped note: ${pitch} (stopped all notes due to Soundfont2Sampler limitation)`);
+      return true;
+    } catch (err) {
+      console.error('❌ Failed to stop note:', err);
+      return false;
+    }
+  }, []);
+
+  // Stop all notes
+  const stopAllNotes = useCallback((): boolean => {
+    const currentState = stateRef.current;
+    
+    if (!currentState.sampler) {
+      console.log('❌ Cannot stop notes: no sampler');
+      return false;
+    }
+
+    try {
+      currentState.sampler.stop();
+      
+      // Clear playing notes
+      setSoundFontState(prev => ({
+        ...prev,
+        playingNotes: new Set()
+      }));
+      
+      console.log('🛑 All notes stopped');
+      return true;
+    } catch (err) {
+      console.error('❌ Failed to stop all notes:', err);
+      return false;
+    }
+  }, []);
 
   // Mute the instrument
   const mute = useCallback(() => {
@@ -541,6 +613,8 @@ export const useSoundFontManager = () => {
     loadSoundFont,
     loadSongSoundFont,
     playNote,
+    stopNote,
+    stopAllNotes,
     mute,
     unmute,
     toggleMute

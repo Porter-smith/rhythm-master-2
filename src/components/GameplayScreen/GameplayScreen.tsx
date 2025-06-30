@@ -59,7 +59,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const backgroundAudioRef = useRef<BackgroundAudioManager | null>(null);
   
   // SoundFont state using the manager
-  const { soundFontState, loadSongSoundFont, playNote } = useSoundFontManager();
+  const { soundFontState, loadSongSoundFont, playNote, stopNote, stopAllNotes } = useSoundFontManager();
   
   // Loading state
   const [loadingState, setLoadingState] = useState<LoadingState>({
@@ -79,6 +79,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [hitError, setHitError] = useState<{ offset: number; accuracy: 'perfect' | 'great' | 'good' | null }>({ offset: 0, accuracy: null });
   const [pressedKeys, setPressedKeys] = useState<Set<number>>(new Set());
   const [lastHitInfo, setLastHitInfo] = useState<{ pressedPitch: number; hitPitch: number; timestamp: number } | null>(null);
+  const [keysCurrentlyPressed, setKeysCurrentlyPressed] = useState<Set<string>>(new Set());
 
   // Background instruments state
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false);
@@ -375,18 +376,24 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       event.preventDefault();
       const targetPitch = keyToPitch[event.code];
       
-      // Add key to pressed keys (visual feedback)
-      setPressedKeys(prev => new Set([...prev, targetPitch]));
-      
-      // ALWAYS play the sound when key is pressed (like a real piano)
-      if (soundFontState.isReady && playNote) {
-        const velocity = 80; // Standard velocity for manual key presses
-        const duration = 0.5; // Standard duration for manual key presses
-        console.log(`🎹 Playing sound for key press: pitch=${targetPitch}, velocity=${velocity}`);
-        playNote(targetPitch, velocity, duration);
+      // Only play sound if this key wasn't already pressed (prevent repeated playing when held)
+      if (!keysCurrentlyPressed.has(event.code)) {
+        // Add key to currently pressed keys
+        setKeysCurrentlyPressed(prev => new Set([...prev, event.code]));
+        
+        // Add key to pressed keys (visual feedback)
+        setPressedKeys(prev => new Set([...prev, targetPitch]));
+        
+        // ALWAYS play the sound when key is first pressed (like a real piano)
+        if (soundFontState.isReady && playNote) {
+          const velocity = 80; // Standard velocity for manual key presses
+          const duration = 0.5; // Standard duration for manual key presses
+          console.log(`🎹 Playing sound for key press: pitch=${targetPitch}, velocity=${velocity}`);
+          playNote(targetPitch, velocity, duration);
+        }
       }
       
-            // Only check for game note hits if actually playing the game
+      // Only check for game note hits if actually playing the game
       if (gameState === 'playing') {
         // Debug: Show what notes are available near the hit line
         const gameTime = (performance.now() - gameEngineRef.current!.getStartTime()) / 1000;
@@ -444,30 +451,57 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     } else if (event.code === 'F12' || (event.ctrlKey && event.shiftKey && event.code === 'KeyD')) {
       event.preventDefault();
       setShowDebug(!showDebug);
-    } else if (event.code === 'KeyB' && gameState === 'playing') {
+    } else if (event.code === 'F3' && gameState === 'playing') {
       event.preventDefault();
       setShowBackgroundPanel(!showBackgroundPanel);
     }
-  }, [gameState, showDebug, showBackgroundPanel]);
+  }, [gameState, showDebug, showBackgroundPanel, keysCurrentlyPressed, soundFontState.isReady, playNote]);
 
   // Handle key release
   const handleKeyRelease = useCallback((event: KeyboardEvent) => {
     if (keyToPitch[event.code] !== undefined) {
       const targetPitch = keyToPitch[event.code];
+      
+      // Remove from currently pressed keys
+      setKeysCurrentlyPressed(prev => {
+        const next = new Set(prev);
+        next.delete(event.code);
+        return next;
+      });
+      
+      // Remove from pressed keys (visual feedback)
       setPressedKeys(prev => {
         const next = new Set(prev);
         next.delete(targetPitch);
         return next;
       });
+      
+      // Note: We're not calling stopNote here anymore since Soundfont2Sampler
+      // doesn't support individual note stopping like SplendidGrandPiano
+      // Notes will stop automatically after their duration
     }
   }, [keyToPitch]);
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyPress);
     document.addEventListener('keyup', handleKeyRelease);
+    
+    // Handle window blur to reset pressed keys (prevents stuck keys)
+    const handleWindowBlur = () => {
+      setKeysCurrentlyPressed(new Set());
+      setPressedKeys(new Set());
+      // Stop all notes when window loses focus
+      if (soundFontState.isReady && stopAllNotes) {
+        stopAllNotes();
+      }
+    };
+    
+    window.addEventListener('blur', handleWindowBlur);
+    
     return () => {
       document.removeEventListener('keydown', handleKeyPress);
       document.removeEventListener('keyup', handleKeyRelease);
+      window.removeEventListener('blur', handleWindowBlur);
     };
   }, [handleKeyPress, handleKeyRelease]);
 
@@ -728,7 +762,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       ctx.fillStyle = '#ff8800';
       ctx.font = '14px Arial';
       ctx.textAlign = 'left';
-      ctx.fillText(`🎼 Background Audio Playing (Press B for controls)`, 20, height - 40);
+      ctx.fillText(`🎼 Background Audio Playing (Press M for controls)`, 20, height - 40);
     } else if (backgroundAudioReady && gameState !== 'playing') {
       ctx.fillStyle = '#888888';
       ctx.font = '14px Arial';
@@ -1146,8 +1180,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
               {/* Instructions */}
         <div className="absolute bottom-6 left-6 text-white/70 text-sm">
-          <p>Use piano keys (Z-M: white keys, S-L: black keys, Q-U: upper octave) • ESC to pause • F12 for debug info • B for background controls</p>
+          <p>Use piano keys (Z-M: white keys, S-L: black keys, Q-U: upper octave) • ESC to pause • F12 for debug info • F3 for background controls</p>
           <p className="text-yellow-300">📚 Learning Mode: Left panel shows current hittable notes and upcoming notes in real-time</p>
+          <p className="text-blue-300">🎹 Keys work like a piano - press to play notes with fixed duration</p>
         {soundFontState.isReady && (
           <p className="text-green-400">🎵 Professional audio with {soundFontState.selectedSoundFont} SoundFont</p>
         )}
