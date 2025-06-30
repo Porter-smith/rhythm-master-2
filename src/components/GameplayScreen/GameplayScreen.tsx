@@ -138,7 +138,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         const finalSong = song;
 
         // Check if we need to load MIDI data for the SELECTED difficulty only
-        if (song.format === 'midi' && (!song.notes[difficulty] || song.notes[difficulty]!.length === 0)) {
+        if (song.format === 'midi') {
           console.log(`🎹 MIDI song detected - need to load ${difficulty} difficulty only`);
           
           // Create a modified song that only loads the selected difficulty
@@ -167,6 +167,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             console.log(`✅ MIDI ${difficulty} difficulty loaded successfully`);
 
             // Load MIDI file for background instruments
+            console.log("LOADINMG THIS THING THLOADING THIS TIHNGK ")
             const midiUrl = (song as any).midiFiles?.[difficulty];
             if (midiUrl) {
               try {
