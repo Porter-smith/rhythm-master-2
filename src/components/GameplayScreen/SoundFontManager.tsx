@@ -69,7 +69,7 @@ export const useSoundFontManager = () => {
 
       // CRITICAL: Load the AudioWorklet module before creating Synthetizer
       console.log('🔧 Loading AudioWorklet module...');
-      await context.audioWorklet.addModule('/src/components/midi-debug/worklet_processor.min.js');
+      await context.audioWorklet.addModule('/js/worklet_processor.min.js');
       console.log('✅ AudioWorklet module loaded');
 
       // Get soundfont URL - handle both named soundfonts and custom URLs
