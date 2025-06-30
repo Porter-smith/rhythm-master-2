@@ -6,7 +6,7 @@ import { GameEngine } from '../../game/GameEngine';
 import { MusicPlayer } from '../../music/MusicPlayer';
 import { LoadingScreen } from './LoadingScreen';
 import { useSoundFontManager } from './SoundFontManager';
-import { SoundfontBackground } from './SoundfontBackground';
+import { BackgroundInstrumentsPanel } from './BackgroundInstrumentsPanel';
 
 interface GameplayScreenProps {
   song: Song;
@@ -596,52 +596,17 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         <LoadingScreen loadingState={loadingState} onBack={handleBack} />
       )}
 
-      {/* Background Instruments Panel - Using existing SoundfontPlaybackPanel */}
+      {/* Background Instruments Panel */}
       {showBackgroundPanel && midiFileForBackground && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 overflow-y-auto">
           <div className="min-h-screen p-8">
-            {/* Panel Header */}
-            <div className="flex items-center justify-between mb-8">
-              <button
-                onClick={() => setShowBackgroundPanel(false)}
-                className="flex items-center space-x-2 text-white/70 hover:text-white transition-colors duration-200 group"
-              >
-                <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform duration-200" />
-                <span>Back to Game</span>
-              </button>
-              
-              <h1 className="text-4xl font-bold text-white text-center flex-1">
-                🎼 Background Instruments
-              </h1>
-              
-              <div className="w-24"></div>
-            </div>
-
-            {/* Instructions */}
-            <div className="max-w-4xl mx-auto mb-8">
-              <div className="bg-blue-900/50 border border-blue-500/50 rounded-lg p-4">
-                <h3 className="text-blue-300 font-bold mb-2">🎵 Background Instruments Control</h3>
-                <p className="text-blue-200 text-sm mb-2">
-                  This panel shows all instruments from the MIDI file. Your selected instrument 
-                  <strong className="text-yellow-300"> (Channel {selectedInstrument ? selectedInstrument.channel + 1 : 'N/A'}) </strong> 
-                  is hidden from this list since you're playing it manually.
-                </p>
-                <p className="text-blue-200 text-sm">
-                  • <strong>Upload the same MIDI file</strong> to see all background instruments<br/>
-                  • <strong>Mute/unmute</strong> individual channels to customize your backing track<br/>
-                  • <strong>Play/pause</strong> to hear the full arrangement while you practice
-                </p>
-              </div>
-            </div>
-
-            {/* SoundFont Playback Panel */}
-            <div className="max-w-7xl mx-auto">
-              <SoundfontBackground 
-                hideSelectedChannel={selectedInstrument?.channel}
-                autoLoadMidi={midiFileForBackground}
-                gameMode={true}
-              />
-            </div>
+            <BackgroundInstrumentsPanel 
+              hideSelectedChannel={selectedInstrument?.channel}
+              autoLoadMidi={midiFileForBackground}
+              gameMode={true}
+              soundFontUrl={(song as any).soundFont || '/soundfonts/Equinox_Grand_Pianos.sf2'}
+              onClose={() => setShowBackgroundPanel(false)}
+            />
           </div>
         </div>
       )}
