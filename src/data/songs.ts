@@ -137,6 +137,28 @@ export const midiSongs: MidiSong[] = [
     }
   },
   {
+    "id": "seven-nation-army-midi",
+    "title": "seven-nation-army",
+    "artist": "Unknown",
+    "duration": "0:30",
+    "difficulties": [
+      "easy"
+    ],
+    "bpm": 120,
+    "format": "midi",
+    "overallDifficulty": 5,
+    "soundFont": "https://porter-smith.github.io/rhythm-master-files/soundfonts/gzdoom.sf2",
+    "midiFiles": {
+      "easy": "https://porter-smith.github.io/rhythm-master-files/midi/seven-nation-army.mid"
+    },
+    "audioFiles": {
+      "easy": "/audio/seven-nation-army-easy.mp3"
+    },
+    "notes": {
+      "easy": []
+    }
+  },
+  {
     "id": "wii-channels-mii-channel-midi",
     "title": "Mii Channel",
     "artist": "Nintendo",
