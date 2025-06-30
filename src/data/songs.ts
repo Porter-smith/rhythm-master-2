@@ -115,9 +115,9 @@ export const midiSongs: MidiSong[] = [
     bpm: 120,
     format: 'midi',
     midiFiles: {
-      easy: '/midi/twinkle-easy.midi',
-      medium: '/midi/twinkle-medium.mid',
-      hard: '/midi/twinkle-hard.mid'
+      easy: 'https://porter-smith.github.io/rhythm-master-files/midi/twinkle-easy.midi',
+      medium: 'https://porter-smith.github.io/rhythm-master-files/midi/twinkle-medium.mid',
+      hard: 'https://porter-smith.github.io/rhythm-master-files/midi/twinkle-hard.mid'
     },
     audioFiles: {
       easy: '/audio/twinkle-easy.mp3',
@@ -125,7 +125,6 @@ export const midiSongs: MidiSong[] = [
       hard: '/audio/twinkle-hard.mp3'
     },
     notes: {
-      // These will be populated when the MIDI files are loaded
       easy: [],
       medium: [],
       hard: []
@@ -140,8 +139,8 @@ export const midiSongs: MidiSong[] = [
     bpm: 90,
     format: 'midi',
     midiFiles: {
-      medium: '/midi/canon-medium.mid',
-      hard: '/midi/canon-hard.mid'
+      medium: 'https://porter-smith.github.io/rhythm-master-files/midi/canon-medium.mid',
+      hard: 'https://porter-smith.github.io/rhythm-master-files/midi/canon-hard.mid'
     },
     audioFiles: {
       medium: '/audio/canon-medium.mp3',
@@ -160,11 +159,11 @@ export const midiSongs: MidiSong[] = [
     difficulties: ['easy', 'medium', 'hard'],
     bpm: 120,
     format: 'midi',
-    soundFont: '/soundfonts/gzdoom.sf2',
+    soundFont: 'https://porter-smith.github.io/rhythm-master-files/soundfonts/gzdoom.sf2',
     midiFiles: {
-      easy: '/midi/fur-elise-easy.mid',
-      medium: '/midi/fur-elise-medium.mid',
-      hard: '/midi/fur-elise-hard.mid'
+      easy: 'https://porter-smith.github.io/rhythm-master-files/midi/fur-elise-easy.mid',
+      medium: 'https://porter-smith.github.io/rhythm-master-files/midi/fur-elise-medium.mid',
+      hard: 'https://porter-smith.github.io/rhythm-master-files/midi/fur-elise-hard.mid'
     },
     notes: {
       easy: [],
@@ -174,15 +173,15 @@ export const midiSongs: MidiSong[] = [
   },
   {
     id: 'dooms-gate-midi',
-    title: 'Doom\'s Gate (MIDI)',
+    title: "Doom's Gate (MIDI)",
     artist: 'Doom',
     duration: '1:15',
     difficulties: ['easy'],
     bpm: 140,
     format: 'midi',
-    soundFont: '/soundfonts/gzdoom.sf2',
+    soundFont: 'https://porter-smith.github.io/rhythm-master-files/soundfonts/gzdoom.sf2',
     midiFiles: {
-      easy: '/midi/dooms-gate-easy.mid'
+      easy: 'https://porter-smith.github.io/rhythm-master-files/midi/dooms-gate-easy.mid'
     },
     audioFiles: {
       easy: '/audio/dooms-gate-easy.mp3'
@@ -200,7 +199,7 @@ export const midiSongs: MidiSong[] = [
     bpm: 140,
     format: 'midi',
     midiFiles: {
-      easy: '/midi/spearsofjustice-easy.mid'
+      easy: 'https://porter-smith.github.io/rhythm-master-files/midi/spearsofjustice-easy.mid'
     },
     notes: {
       easy: []
@@ -215,7 +214,7 @@ export const midiSongs: MidiSong[] = [
     bpm: 140,
     format: 'midi',
     midiFiles: {
-      easy: '/midi/test-drive-easy.mid'
+      easy: 'https://porter-smith.github.io/rhythm-master-files/midi/test-drive-easy.mid'
     },
     notes: {  
       easy: []

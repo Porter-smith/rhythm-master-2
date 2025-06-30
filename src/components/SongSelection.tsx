@@ -160,7 +160,8 @@ export const SongSelection: React.FC<SongSelectionProps> = ({ onSongSelect, onBa
                   {/* Waveform Preview */}
                   {hoveredSong === song.id && (
                     <div className="mb-4 h-16 bg-black/30 rounded-lg overflow-hidden">
-                      <WaveformPreview song={song} />
+                      {/* Was causing lag */}
+                      {/* <WaveformPreview song={song} /> */}
                     </div>
                   )}
 
@@ -191,7 +192,7 @@ export const SongSelection: React.FC<SongSelectionProps> = ({ onSongSelect, onBa
 
                   {/* Song Note Preview (always shown) */}
                   <div className="mt-4 h-16 bg-black/30 rounded-lg overflow-hidden">
-                    <SongNotePreview notes={previewNotes} width={320} height={64} />
+                    {/* <SongNotePreview notes={previewNotes} width={320} height={64} /> */}
                   </div>
 
                   {/* Hover overlay */}
