@@ -507,7 +507,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
   // Game loop
   useEffect(() => {
-    if (gameState !== 'playing') return;
+    if (gameState !== 'playing' && gameState !== 'paused') return;
 
     const gameLoop = () => {
       const canvas = canvasRef.current;
@@ -516,15 +516,15 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Update game state
-      const currentState = gameEngineRef.current.update(performance.now());
-      
-      // Update filtered notes from game engine state
-      setFilteredNotes(currentState.notes);
-      
-      // Update note information for learning display
+      // Only update game state when actually playing
       if (gameState === 'playing') {
-        const gameTime = (performance.now() - gameEngineRef.current.getStartTime()) / 1000;
+        const currentState = gameEngineRef.current.update(performance.now());
+        
+        // Update filtered notes from game engine state
+        setFilteredNotes(currentState.notes);
+        
+        // Update note information for learning display
+        const gameTime = gameEngineRef.current.getCurrentGameTime();
         
         // Find notes that can be hit right now (within hit window)
         const hittableNotes = currentState.notes.filter(note => {
@@ -545,26 +545,26 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           upcomingNotes,
           gameTime
         });
-      }
-      
-      // Check if game is complete
-      if (currentState.isComplete) {
-        const finalScore: GameScore = {
-          score: currentState.score,
-          accuracy: currentState.accuracy,
-          combo: currentState.maxCombo,
-          hitStats: currentState.hitStats,
-          grade: calculateGrade(currentState.accuracy),
-          hitTimings: gameEngineRef.current.getHitTimings(),
-          overallDifficulty: song.overallDifficulty || 5,
-          hitWindows: gameEngineRef.current.getTimingWindows()
-        };
-        console.log('🎉 Game complete! Final score:', finalScore);
-        onGameComplete(finalScore);
-        return;
+        
+        // Check if game is complete
+        if (currentState.isComplete) {
+          const finalScore: GameScore = {
+            score: currentState.score,
+            accuracy: currentState.accuracy,
+            combo: currentState.maxCombo,
+            hitStats: currentState.hitStats,
+            grade: calculateGrade(currentState.accuracy),
+            hitTimings: gameEngineRef.current.getHitTimings(),
+            overallDifficulty: song.overallDifficulty || 5,
+            hitWindows: gameEngineRef.current.getTimingWindows()
+          };
+          console.log('🎉 Game complete! Final score:', finalScore);
+          onGameComplete(finalScore);
+          return;
+        }
       }
 
-      // Render game
+      // Always render game (even when paused)
       renderGame(ctx, canvas);
       
       animationFrameRef.current = requestAnimationFrame(gameLoop);
@@ -630,7 +630,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     const hitLineX = width * 0.25;
 
     // Draw vertical measure and beat lines, synchronized with note scroll
-    const gameTime = gameEngineRef.current ? (performance.now() - gameEngineRef.current.getStartTime()) / 1000 : 0;
+    const gameTime = gameEngineRef.current ? gameEngineRef.current.getCurrentGameTime() : 0;
     const scrollSpeed = (song.bpm / 60) * LINE_SPACING * 2;
     const secondsPerBeat = 60 / song.bpm;
     const pixelsPerSecond = scrollSpeed;

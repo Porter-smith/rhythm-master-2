@@ -48,6 +48,8 @@ export class GameEngine {
   private startTime: number = 0;
   private isPlaying: boolean = false;
   private isPaused: boolean = false;
+  private pauseStartTime: number = 0;
+  private totalPauseDuration: number = 0;
   private soundFontCallback?: (pitch: number, velocity: number, duration: number) => boolean;
   private selectedInstrument?: { channel: number; instrument: number };
   private hitTimings: number[] = []; // Array to store hit timings
@@ -56,6 +58,13 @@ export class GameEngine {
   // Add getter for startTime
   public getStartTime(): number {
     return this.startTime;
+  }
+
+  // Add getter for current game time (accounting for pauses)
+  public getCurrentGameTime(): number {
+    if (!this.isPlaying) return 0;
+    const currentTime = this.isPaused ? this.pauseStartTime : performance.now();
+    return (currentTime - this.startTime) / 1000 - this.totalPauseDuration;
   }
 
   // Add getter for hit timings
@@ -202,17 +211,19 @@ export class GameEngine {
   pause(): void {
     console.log(`⏸️ GameEngine.pause() called`);
     this.isPaused = true;
+    this.pauseStartTime = performance.now();
   }
 
   resume(): void {
     console.log(`▶️ GameEngine.resume() called`);
     this.isPaused = false;
+    this.totalPauseDuration += (performance.now() - this.pauseStartTime) / 1000;
   }
 
   update(currentTime: number): GameState {
     if (!this.isPlaying || this.isPaused) return this.gameState;
 
-    this.gameState.gameTime = (currentTime - this.startTime) / 1000;
+    this.gameState.gameTime = (currentTime - this.startTime) / 1000 - this.totalPauseDuration;
 
     // Update note positions and states
     this.gameState.notes.forEach(note => {
