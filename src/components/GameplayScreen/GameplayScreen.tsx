@@ -106,7 +106,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     soundFontLoading: soundFontState.isLoading,
     backgroundPanelVisible: showBackgroundPanel,
     midiFileLoaded: !!midiFileForBackground,
-    backgroundAudioReady: backgroundAudioReady
+    backgroundAudioReady: backgroundAudioReady,
+    gameState: gameState,
+    isGameActuallyPlaying: gameState === 'playing'
   };
 
   // Initialize game with proper loading phases - ONLY RUN ONCE
@@ -179,7 +181,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
                 const response = await fetch(midiUrl);
                 const arrayBuffer = await response.arrayBuffer();
                 setMidiFileForBackground(arrayBuffer);
-                console.log(`✅ MIDI file loaded for background audio`);
+                console.log(`✅ MIDI file loaded for background audio (will start when game begins)`);
               } catch (midiError) {
                 console.warn(`⚠️ Failed to load MIDI file for background audio:`, midiError);
               }
@@ -299,6 +301,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     if (gameState === 'countdown' && countdown > 0) {
       const timer = setTimeout(() => {
         if (countdown === 1) {
+          console.log('🎮 Countdown finished - starting game and background audio!');
           setGameState('playing');
           
           // CRITICAL: Set the callback one more time right before starting
@@ -493,11 +496,16 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     }
 
     // Background instruments indicator
-    if (backgroundAudioReady) {
+    if (backgroundAudioReady && gameState === 'playing') {
       ctx.fillStyle = '#ff8800';
       ctx.font = '14px Arial';
       ctx.textAlign = 'left';
       ctx.fillText(`🎼 Background Audio Playing (Press B for controls)`, 20, height - 40);
+    } else if (backgroundAudioReady && gameState !== 'playing') {
+      ctx.fillStyle = '#888888';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(`🎼 Background Audio Ready (will start with game)`, 20, height - 40);
     }
   };
 
@@ -543,7 +551,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const handleBackgroundAudioReady = (manager: BackgroundAudioManager) => {
     backgroundAudioRef.current = manager;
     setBackgroundAudioReady(true);
-    console.log('🎼 Background audio manager is ready and will auto-start with game');
+    console.log('🎼 Background audio manager is ready (waiting for game to start)');
   };
 
   return (
@@ -590,8 +598,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           {soundFontState.isReady && (
             <p className="text-green-400 text-sm">🎹 {soundFontState.selectedSoundFont} Ready</p>
           )}
-          {backgroundAudioReady && (
+          {backgroundAudioReady && gameState === 'playing' && (
             <p className="text-orange-400 text-sm">🎼 Background Audio Playing</p>
+          )}
+          {backgroundAudioReady && gameState !== 'playing' && (
+            <p className="text-gray-400 text-sm">🎼 Background Audio Ready</p>
           )}
         </div>
 
@@ -641,6 +652,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             <div><span className="text-blue-300">Format:</span> {debugInfo.songFormat}</div>
             <div><span className="text-blue-300">Difficulty:</span> {debugInfo.difficulty}</div>
             <div><span className="text-blue-300">Loading Phase:</span> {debugInfo.loadingPhase}</div>
+            <div><span className="text-blue-300">Game State:</span> {debugInfo.gameState}</div>
+            <div><span className="text-blue-300">Is Game Playing:</span> {debugInfo.isGameActuallyPlaying ? 'Yes' : 'No'}</div>
             <div><span className="text-blue-300">Init Started:</span> {debugInfo.initializationStarted ? 'Yes' : 'No'}</div>
             <div className={`${debugInfo.notesAvailable === 0 ? 'text-red-400' : 'text-green-400'}`}>
               <span className="text-blue-300">Notes Available:</span> {debugInfo.notesAvailable}
@@ -659,7 +672,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
               <span className="text-blue-300">MIDI for Background:</span> {debugInfo.midiFileLoaded ? 'Loaded' : 'Not Loaded'}
             </div>
             <div className={`${debugInfo.backgroundAudioReady ? 'text-green-400' : 'text-red-400'}`}>
-              <span className="text-blue-300">Background Audio:</span> {debugInfo.backgroundAudioReady ? 'Ready & Playing' : 'Not Ready'}
+              <span className="text-blue-300">Background Audio:</span> {debugInfo.backgroundAudioReady ? 'Ready' : 'Not Ready'}
             </div>
           </div>
         </div>
@@ -684,8 +697,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           {soundFontState.isReady && (
             <div className="text-xs text-green-400">🎹 SoundFont Active</div>
           )}
-          {backgroundAudioReady && (
+          {backgroundAudioReady && gameState === 'playing' && (
             <div className="text-xs text-orange-400">🎼 Background Playing</div>
+          )}
+          {backgroundAudioReady && gameState !== 'playing' && (
+            <div className="text-xs text-gray-400">🎼 Background Ready</div>
           )}
         </div>
       </div>
@@ -730,8 +746,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         {soundFontState.isReady && (
           <p className="text-green-400">🎵 Professional audio with {soundFontState.selectedSoundFont} SoundFont</p>
         )}
-        {backgroundAudioReady && (
+        {backgroundAudioReady && gameState === 'playing' && (
           <p className="text-orange-400">🎼 Background instruments playing automatically</p>
+        )}
+        {backgroundAudioReady && gameState !== 'playing' && (
+          <p className="text-gray-400">🎼 Background instruments ready (will start with game)</p>
         )}
       </div>
     </div>

@@ -17,6 +17,7 @@ export class BackgroundAudioManager {
   private isReady = false;
   private isPlaying = false;
   private mutedChannels = new Set<number>();
+  private hasStartedOnce = false; // Track if we've started playback at least once
 
   async initialize(soundFontUrl: string): Promise<void> {
     try {
@@ -41,7 +42,7 @@ export class BackgroundAudioManager {
       this.startAudioLoop();
       
       this.isReady = true;
-      console.log('✅ Background audio manager ready');
+      console.log('✅ Background audio manager ready (but not playing yet)');
     } catch (error) {
       console.error('❌ Failed to initialize background audio manager:', error);
       throw error;
@@ -57,7 +58,13 @@ export class BackgroundAudioManager {
       console.log('🎼 Loading MIDI for background audio...');
       const midi = new MIDI(midiFile);
       this.sequencer.loadNewSongList([midi]);
-      console.log('✅ MIDI loaded for background audio');
+      
+      // IMPORTANT: Immediately pause after loading to prevent auto-play
+      this.sequencer.pause();
+      this.isPlaying = false;
+      this.hasStartedOnce = false;
+      
+      console.log('✅ MIDI loaded for background audio (paused, waiting for game start)');
     } catch (error) {
       console.error('❌ Failed to load MIDI for background audio:', error);
       throw error;
@@ -65,9 +72,19 @@ export class BackgroundAudioManager {
   }
 
   play(): void {
-    if (!this.sequencer || !this.isReady) return;
+    if (!this.sequencer || !this.isReady) {
+      console.log('⚠️ Background audio not ready to play');
+      return;
+    }
     
     console.log('▶️ Starting background audio playback');
+    
+    // If this is the first time playing, start from beginning
+    if (!this.hasStartedOnce) {
+      this.sequencer.stop(); // Reset to beginning
+      this.hasStartedOnce = true;
+    }
+    
     this.sequencer.play();
     this.isPlaying = true;
   }
@@ -86,6 +103,7 @@ export class BackgroundAudioManager {
     console.log('⏹️ Stopping background audio playback');
     this.sequencer.stop();
     this.isPlaying = false;
+    this.hasStartedOnce = false; // Reset for next play
   }
 
   muteChannel(channel: number, muted: boolean): void {
@@ -134,6 +152,10 @@ export class BackgroundAudioManager {
     }
     
     return voiceList;
+  }
+
+  isCurrentlyPlaying(): boolean {
+    return this.isPlaying;
   }
 
   private startAudioLoop(): void {
@@ -188,6 +210,7 @@ export class BackgroundAudioManager {
     this.sequencer = null;
     this.isReady = false;
     this.isPlaying = false;
+    this.hasStartedOnce = false;
   }
 }
 
@@ -221,7 +244,7 @@ export const BackgroundAudioManagerComponent: React.FC<BackgroundAudioManagerPro
         managerRef.current = manager;
         onReady?.(manager);
         
-        console.log('🎼 Background audio manager initialized and ready');
+        console.log('🎼 Background audio manager initialized and ready (waiting for game start)');
       } catch (error) {
         console.error('❌ Failed to initialize background audio manager:', error);
       }
@@ -237,13 +260,17 @@ export const BackgroundAudioManagerComponent: React.FC<BackgroundAudioManagerPro
     };
   }, [soundFontUrl, midiFile]);
 
-  // Handle game play/pause
+  // Handle game play/pause - THIS IS THE KEY FIX
   useEffect(() => {
     if (!managerRef.current) return;
 
+    console.log(`🎮 Game playing state changed: ${isGamePlaying}`);
+    
     if (isGamePlaying) {
+      console.log('🎼 Game started - starting background audio');
       managerRef.current.play();
     } else {
+      console.log('🎼 Game paused/stopped - pausing background audio');
       managerRef.current.pause();
     }
   }, [isGamePlaying]);
