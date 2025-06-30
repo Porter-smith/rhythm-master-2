@@ -91,7 +91,12 @@ export const useSoundFontManager = () => {
 
       // Add effects immediately (exactly like POC)
       newSampler.output.addEffect('reverb', reverb, 0.2);
-      newSampler.output.setVolume(80);
+      
+      // VOLUME FIX: Set a much lower volume for manual notes to match background
+      // Background instruments typically play at around 20-30% volume
+      // So we'll set manual notes to around 25% volume
+      newSampler.output.setVolume(25); // Reduced from 80 to 25
+      console.log('🔊 Set SoundFont volume to 25% to match background instruments');
 
       // Wait for the sampler to load (exactly like POC)
       const loadedSampler = await newSampler.load;
@@ -244,7 +249,7 @@ export const useSoundFontManager = () => {
       setSoundFontState(newState);
       stateRef.current = newState; // Update ref immediately
 
-      console.log(`🎉 Successfully loaded soundfont: ${soundfontName}`);
+      console.log(`🎉 Successfully loaded soundfont: ${soundfontName} at 25% volume`);
       console.log(`🔍 Final state: sampler exists=${!!newSampler}, ready=true`);
       return true;
     } catch (err) {
@@ -299,7 +304,7 @@ export const useSoundFontManager = () => {
     }
   }, [loadSoundFont]);
 
-  // Play note using SoundFont - ENHANCED for multi-channel support
+  // Play note using SoundFont - ENHANCED for multi-channel support with VOLUME CONTROL
   const playNote = useCallback((pitch: number, velocity: number = 80, duration: number = 0.5, channel: number = 0): boolean => {
     // ALWAYS use the current state from ref, not the stale closure state
     const currentState = stateRef.current;
@@ -448,18 +453,29 @@ export const useSoundFontManager = () => {
 
       console.log(`🎹 Found matching instrument: "${foundInstrument}"`);
 
+      // VOLUME BALANCE FIX: Scale velocity to match background instruments
+      // Background instruments typically use velocity 64-100
+      // We'll scale the input velocity to be more balanced
+      const scaledVelocity = Math.min(127, velocity * 0.8); // Reduce by 20%
+      
       const noteToPlay = {
         note: pitch,
-        velocity: velocity,
+        velocity: scaledVelocity, // Use scaled velocity
         detune: 0,
         time: currentState.sampler.context.currentTime,
         duration: duration,
         instrument: foundInstrument
       };
       
-      console.log(`🎵 Playing SoundFont note:`, noteToPlay);
+      console.log(`🎵 Playing SoundFont note with balanced volume:`, {
+        ...noteToPlay,
+        originalVelocity: velocity,
+        scaledVelocity: scaledVelocity,
+        volumeReduction: '20%'
+      });
+      
       currentState.sampler.start(noteToPlay);
-      console.log(`✅ SoundFont note played successfully: ${pitch} with instrument "${foundInstrument}" on channel ${channel}`);
+      console.log(`✅ SoundFont note played successfully: ${pitch} with instrument "${foundInstrument}" on channel ${channel} (volume balanced)`);
       return true;
     } catch (err) {
       console.error('❌ Failed to play note with SoundFont:', err);
