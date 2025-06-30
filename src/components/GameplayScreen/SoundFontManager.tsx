@@ -299,8 +299,8 @@ export const useSoundFontManager = () => {
     }
   }, [loadSoundFont]);
 
-  // Play note using SoundFont - ALWAYS use current state from ref
-  const playNote = useCallback((pitch: number, velocity: number = 80, duration: number = 0.5): boolean => {
+  // Play note using SoundFont - ENHANCED for multi-channel support
+  const playNote = useCallback((pitch: number, velocity: number = 80, duration: number = 0.5, channel: number = 0): boolean => {
     // ALWAYS use the current state from ref, not the stale closure state
     const currentState = stateRef.current;
     
@@ -308,6 +308,7 @@ export const useSoundFontManager = () => {
       pitch,
       velocity,
       duration,
+      channel,
       samplerExists: !!currentState.sampler,
       loadingPhase: currentState.isLoading ? 'loading' : currentState.isReady ? 'ready' : 'not-ready',
       samplerContextState: currentState.sampler?.context?.state,
@@ -334,6 +335,9 @@ export const useSoundFontManager = () => {
     }
 
     try {
+      // For background instruments (different channels), we might want to use different instruments
+      // For now, we'll use the same instrument but could be enhanced to load multiple instruments
+      
       // Find the instrument by name in the soundfont
       if (!currentState.selectedInstrument || !currentState.sampler.instrumentNames) {
         console.error('❌ No selected instrument or no instrument names available');
@@ -455,7 +459,7 @@ export const useSoundFontManager = () => {
       
       console.log(`🎵 Playing SoundFont note:`, noteToPlay);
       currentState.sampler.start(noteToPlay);
-      console.log(`✅ SoundFont note played successfully: ${pitch} with instrument "${foundInstrument}"`);
+      console.log(`✅ SoundFont note played successfully: ${pitch} with instrument "${foundInstrument}" on channel ${channel}`);
       return true;
     } catch (err) {
       console.error('❌ Failed to play note with SoundFont:', err);
