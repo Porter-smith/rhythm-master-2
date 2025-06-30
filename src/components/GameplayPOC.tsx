@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeft, Play, Pause } from 'lucide-react';
+import { useSoundFontManager } from './GameplayScreen/SoundFontManager';
 
 interface Note {
   note: number;
@@ -18,6 +19,7 @@ interface Song {
   duration: number;
   difficulties: string[];
   selected_difficulty: number;
+  soundFont?: string;
 }
 
 interface GameplayPOCProps {
@@ -51,13 +53,14 @@ const BASS_NOTES: { [key: number]: string } = {
   54: 'F#3', 55: 'G3', 56: 'G#3', 57: 'A3', 58: 'A#3', 59: 'B3'
 };
 
-// Sample song data
+// Sample song data with SoundFont
 const SAMPLE_SONG: Song = {
   name: "Sample Song",
   bpm: 120,
   duration: 60,
   difficulties: ["easy.mid", "medium.mid", "hard.mid"],
-  selected_difficulty: 0
+  selected_difficulty: 0,
+  soundFont: 'https://smpldsnds.github.io/soundfonts/soundfonts/yamaha-grand-lite.sf2' // Test SoundFont
 };
 
 // Sample MIDI events (C major scale, each note a full measure, first note starts at second measure)
@@ -77,6 +80,9 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
   const animationFrameRef = useRef<number>();
   const startTimeRef = useRef<number>(0);
   
+  // SoundFont state using the manager
+  const { soundFontState, loadSoundFont, playNote, stopNote, stopAllNotes } = useSoundFontManager();
+  
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [gameTime, setGameTime] = useState(0);
@@ -90,9 +96,32 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
   const [maxCombo, setMaxCombo] = useState(0);
   const [fullCombo, setFullCombo] = useState(true);
   const [showScore, setShowScore] = useState(false);
+  const [keysCurrentlyPressed, setKeysCurrentlyPressed] = useState<Set<string>>(new Set());
+  const [soundFontLoaded, setSoundFontLoaded] = useState(false);
 
   // Game settings
   const scrollSpeed = (SAMPLE_SONG.bpm / 60) * LINE_SPACING * 2;
+
+  // Initialize SoundFont when component mounts
+  useEffect(() => {
+    console.log('🎹 GameplayPOC: Initializing SoundFont...');
+    const initializeSoundFont = async () => {
+      try {
+        console.log(`🎹 Loading SoundFont: ${SAMPLE_SONG.soundFont}`);
+        const success = await loadSoundFont(SAMPLE_SONG.soundFont!);
+        if (success) {
+          console.log('✅ SoundFont loaded successfully in GameplayPOC');
+          setSoundFontLoaded(true);
+        } else {
+          console.error('❌ Failed to load SoundFont in GameplayPOC');
+        }
+      } catch (error) {
+        console.error('❌ Error loading SoundFont:', error);
+      }
+    };
+
+    initializeSoundFont();
+  }, [loadSoundFont]);
 
   // Helper functions
   const isSharpNote = (note: number): boolean => {
@@ -234,37 +263,62 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
     };
   }, [isPlaying, isPaused, activeNotes, pressedKeys, newlyPressedKeys, currentCombo]);
 
-  // Keyboard input handling
+  // FL Studio style keyboard mapping
   const keyToNote: { [key: string]: number } = {
-    'KeyZ': 60, // C4
-    'KeyW': 61, // C#4
-    'KeyX': 62, // D4
-    'KeyE': 63, // D#4
-    'KeyC': 64, // E4
-    'KeyV': 65, // F4
-    'KeyG': 66, // F#4
-    'KeyB': 67, // G4
-    'KeyH': 68, // G#4
-    'KeyN': 69, // A4
-    'KeyJ': 70, // A#4
-    'KeyM': 71, // B4
-    'Comma': 72, // C5
-    // ... (add more as needed)
+    // Lower octave (Z-M row)
+    'KeyZ': 60,  // C4
+    'KeyX': 62,  // D4
+    'KeyC': 64,  // E4
+    'KeyV': 65,  // F4
+    'KeyB': 67,  // G4
+    'KeyN': 69,  // A4
+    'KeyM': 71,  // B4
+    // Black keys (S-L row)
+    'KeyS': 61,  // C#4
+    'KeyD': 63,  // D#4
+    'KeyF': 66,  // F#4
+    'KeyG': 68,  // G#4
+    'KeyH': 70,  // A#4
+    // Upper octave (Q-P row)
+    'KeyQ': 72,  // C5
+    'KeyW': 74,  // D5
+    'KeyE': 76,  // E5
+    'KeyR': 77,  // F5
+    'KeyT': 79,  // G5
+    'KeyY': 81,  // A5
+    'KeyU': 83,  // B5
   };
 
   const handleKeyPress = useCallback((event: KeyboardEvent) => {
     if (keyToNote[event.code] !== undefined) {
       event.preventDefault();
-      const note = keyToNote[event.code];
-      setPressedKeys(prev => {
-        const wasAlreadyPressed = prev.has(note);
-        const next = new Set([...prev, note]);
-        // Only add to newly pressed if it wasn't already pressed (prevents key repeat)
-        if (!wasAlreadyPressed) {
-          setNewlyPressedKeys(prevNewly => new Set([...prevNewly, note]));
+      const targetPitch = keyToNote[event.code];
+      
+      // Only play sound if this key wasn't already pressed (prevent repeated playing when held)
+      if (!keysCurrentlyPressed.has(event.code)) {
+        // Add key to currently pressed keys
+        setKeysCurrentlyPressed(prev => new Set([...prev, event.code]));
+        
+        // Add key to pressed keys (visual feedback)
+        setPressedKeys(prev => {
+          const next = new Set([...prev, targetPitch]);
+          console.log(`🎹 Key pressed: ${event.code} (pitch ${targetPitch}), pressedKeys now:`, Array.from(next));
+          return next;
+        });
+        
+        // Add to newly pressed keys for game logic
+        setNewlyPressedKeys(prevNewly => new Set([...prevNewly, targetPitch]));
+        
+        // ALWAYS play the sound when key is first pressed (like a real piano)
+        if (soundFontState.isReady && playNote) {
+          const velocity = 80; // Standard velocity for manual key presses
+          const duration = 0.5; // Standard duration for manual key presses
+          console.log(`🎹 Playing sound for key press: pitch=${targetPitch}, velocity=${velocity}`);
+          playNote(targetPitch, velocity, duration);
+        } else {
+          console.log(`🎹 Cannot play sound: soundFontReady=${soundFontState.isReady}, playNote=${!!playNote}`);
         }
-        return next;
-      });
+      }
     }
     
     if (event.code === 'Space') {
@@ -280,20 +334,37 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
     if (event.code === 'Escape') {
       setIsPaused(prev => !prev);
     }
-  }, [isPlaying]);
+  }, [isPlaying, keysCurrentlyPressed, soundFontState.isReady, playNote]);
 
   const handleKeyRelease = useCallback((event: KeyboardEvent) => {
     if (keyToNote[event.code] !== undefined) {
-      const noteNum = keyToNote[event.code];
-      setPressedKeys(prev => {
+      const targetPitch = keyToNote[event.code];
+      
+      // Remove from currently pressed keys
+      setKeysCurrentlyPressed(prev => {
         const next = new Set(prev);
-        next.delete(noteNum);
+        next.delete(event.code);
         return next;
       });
+      
+      // Remove from pressed keys (visual feedback)
+      setPressedKeys(prev => {
+        const next = new Set(prev);
+        next.delete(targetPitch);
+        console.log(`🎹 Key released: ${event.code} (pitch ${targetPitch}), pressedKeys now:`, Array.from(next));
+        return next;
+      });
+      
+      // NOTE OFF - Stop the note when key is released (like a real piano)
+      if (soundFontState.isReady && stopNote) {
+        console.log(`🎹 Stopping sound for key release: pitch=${targetPitch}`);
+        stopNote(targetPitch);
+      }
+      
       // If a note is currently hit and not finished, mark as missed
       setActiveNotes(prevNotes => prevNotes.map(note => {
         if (
-          note.note === noteNum &&
+          note.note === targetPitch &&
           note.hit &&
           !note.missed &&
           gameTime < note.start_time + note.length
@@ -303,16 +374,30 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
         return note;
       }));
     }
-  }, [gameTime]);
+  }, [gameTime, soundFontState.isReady, stopNote]);
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyPress);
     document.addEventListener('keyup', handleKeyRelease);
+    
+    // Handle window blur to reset pressed keys (prevents stuck keys)
+    const handleWindowBlur = () => {
+      setKeysCurrentlyPressed(new Set());
+      setPressedKeys(new Set());
+      // Stop all notes when window loses focus
+      if (soundFontState.isReady && stopAllNotes) {
+        stopAllNotes();
+      }
+    };
+    
+    window.addEventListener('blur', handleWindowBlur);
+    
     return () => {
       document.removeEventListener('keydown', handleKeyPress);
       document.removeEventListener('keyup', handleKeyRelease);
+      window.removeEventListener('blur', handleWindowBlur);
     };
-  }, [handleKeyPress, handleKeyRelease]);
+  }, [handleKeyPress, handleKeyRelease, soundFontState.isReady, stopAllNotes]);
 
   // Render game
   const renderGame = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
@@ -454,7 +539,25 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
     ctx.fillText(`Combo: ${currentCombo}`, width - 150, 60);
     ctx.fillText(`BPM: ${SAMPLE_SONG.bpm}`, width - 150, 100);
     ctx.fillText(`Time: ${gameTime.toFixed(1)}s`, width - 150, 140);
-  }, [activeNotes, pressedKeys, score, currentCombo, gameTime]);
+
+    // SoundFont status indicator
+    if (soundFontState.isReady) {
+      ctx.fillStyle = '#00ff88';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(`🎹 ${soundFontState.selectedSoundFont}`, 20, height - 60);
+    } else if (soundFontState.isLoading) {
+      ctx.fillStyle = '#ffaa00';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(`🎹 Loading SoundFont...`, 20, height - 60);
+    } else if (soundFontState.error) {
+      ctx.fillStyle = '#ff0000';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(`🎹 SoundFont Error`, 20, height - 60);
+    }
+  }, [activeNotes, pressedKeys, score, currentCombo, gameTime, soundFontState]);
 
   const noteToY = (note: number, isTreble: boolean): number => {
     if (isTreble) {
@@ -576,6 +679,15 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
         <div className="text-center">
           <h2 className="text-2xl font-bold text-white">Rhythm Game</h2>
           <p className="text-white/70">{SAMPLE_SONG.name}</p>
+          {soundFontState.isReady && (
+            <p className="text-green-400 text-sm">🎹 Yamaha Grand Piano Ready</p>
+          )}
+          {soundFontState.isLoading && (
+            <p className="text-yellow-400 text-sm">🎹 Loading SoundFont...</p>
+          )}
+          {soundFontState.error && (
+            <p className="text-red-400 text-sm">❌ SoundFont Error</p>
+          )}
         </div>
 
         <div className="flex items-center space-x-4">
@@ -617,10 +729,19 @@ export const GameplayPOC: React.FC<GameplayPOCProps> = ({ onBack }) => {
       {/* Instructions */}
       <div className="absolute bottom-6 left-6 text-white/70 text-sm">
         <p>🎹 Keyboard Controls:</p>
-        <p>• A,W,S,E,D,F,T,G,Y,H,U,J,K - Piano keys</p>
+        <p>• Z,X,C,V,B,N,M (white keys) • S,D,F,G,H (black keys) • Q,W,E,R,T,Y,U (upper octave)</p>
         <p>• SPACE - Start/Pause • ESC - Pause</p>
         <p>• Press keys at the right time when notes reach the red line!</p>
-        <p>• Don't hold keys - you must press them at the exact moment!</p>
+        <p>• Keys work like a piano - press to play notes with SoundFont audio!</p>
+        {soundFontState.isReady && (
+          <p className="text-green-400">🎵 Professional piano audio with Yamaha Grand SoundFont</p>
+        )}
+        {soundFontState.isLoading && (
+          <p className="text-yellow-400">🎵 Loading professional piano SoundFont...</p>
+        )}
+        {soundFontState.error && (
+          <p className="text-red-400">❌ SoundFont loading failed - using system audio</p>
+        )}
       </div>
     </div>
   );
