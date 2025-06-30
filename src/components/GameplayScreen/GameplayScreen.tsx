@@ -6,7 +6,7 @@ import { GameEngine } from '../../game/GameEngine';
 import { MusicPlayer } from '../../music/MusicPlayer';
 import { LoadingScreen } from './LoadingScreen';
 import { useSoundFontManager } from './SoundFontManager';
-import { SoundfontPlaybackPanel } from '../midi-debug/SoundfontPlaybackPanel';
+import { SoundfontBackground } from './SoundfontBackground';
 
 interface GameplayScreenProps {
   song: Song;
@@ -636,7 +636,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
             {/* SoundFont Playback Panel */}
             <div className="max-w-7xl mx-auto">
-              <SoundfontPlaybackPanel 
+              <SoundfontBackground 
                 hideSelectedChannel={selectedInstrument?.channel}
                 autoLoadMidi={midiFileForBackground}
                 gameMode={true}
