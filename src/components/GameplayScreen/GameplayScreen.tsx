@@ -78,6 +78,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [filteredNotes, setFilteredNotes] = useState<FilteredNote[]>([]);
   const [hitError, setHitError] = useState<{ offset: number; accuracy: 'perfect' | 'great' | 'good' | null }>({ offset: 0, accuracy: null });
   const [pressedKeys, setPressedKeys] = useState<Set<number>>(new Set());
+  const pressedKeysRef = useRef<Set<number>>(new Set());
   const [lastHitInfo, setLastHitInfo] = useState<{ pressedPitch: number; hitPitch: number; timestamp: number } | null>(null);
   const [keysCurrentlyPressed, setKeysCurrentlyPressed] = useState<Set<string>>(new Set());
 
@@ -112,7 +113,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     soundFontLoaded: soundFontState.isReady,
     selectedSoundFont: soundFontState.selectedSoundFont,
     initializationStarted: initializationRef.current,
-    samplerState: soundFontState.sampler ? 'Exists' : 'Null',
+    synthState: soundFontState.synth ? 'Exists' : 'Null',
     samplerReady: soundFontState.isReady,
     soundFontLoading: soundFontState.isLoading,
     backgroundPanelVisible: showBackgroundPanel,
@@ -394,7 +395,12 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         setKeysCurrentlyPressed(prev => new Set([...prev, event.code]));
         
         // Add key to pressed keys (visual feedback)
-        setPressedKeys(prev => new Set([...prev, targetPitch]));
+        setPressedKeys(prev => {
+          const next = new Set([...prev, targetPitch]);
+          console.log(`🎹 Key pressed: ${event.code} (pitch ${targetPitch}), pressedKeys now:`, Array.from(next));
+          pressedKeysRef.current = next; // Update ref immediately
+          return next;
+        });
         
         // ALWAYS play the sound when key is first pressed (like a real piano)
         if (soundFontState.isReady && playNote) {
@@ -485,6 +491,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       setPressedKeys(prev => {
         const next = new Set(prev);
         next.delete(targetPitch);
+        console.log(`🎹 Key released: ${event.code} (pitch ${targetPitch}), pressedKeys now:`, Array.from(next));
+        pressedKeysRef.current = next; // Update ref immediately
         return next;
       });
       
@@ -710,7 +718,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
       // Calculate note position and size (matching POC)
       const pixelsPerSecond = scrollSpeed;
-      const secondsPerBeat = 60 / song.bpm;
       const noteStartX = hitLineX + (note.time - gameTime) * pixelsPerSecond;
       const noteWidth = note.duration * pixelsPerSecond;
       const noteHeight = LINE_SPACING; // Fill exactly between staff lines
@@ -734,9 +741,12 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     });
 
     // Show pressed keys on the hit line
-    pressedKeys.forEach(pitch => {
+    console.log(`🎹 Rendering pressed keys:`, Array.from(pressedKeysRef.current));
+    pressedKeysRef.current.forEach(pitch => {
       const isTreble = pitch >= 60 && pitch <= 84;
       const y = noteToY(pitch, isTreble);
+      
+      console.log(`🎹 Drawing yellow square for pitch ${pitch} at y=${y}`);
       
       // Draw a bright highlight box for the pressed key at the hit line
       ctx.fillStyle = 'rgba(255, 255, 0, 0.8)'; // Bright yellow highlight
@@ -787,11 +797,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
   // Updated note positioning function (matching POC)
   const noteToY = (note: number, isTreble: boolean): number => {
-    const TREBLE_MIN = 60;
-    const TREBLE_MAX = 84;
-    const BASS_MIN = 36;
-    const BASS_MAX = 59;
-    
     const TREBLE_NOTES: { [key: number]: string } = {
       60: 'C4', 61: 'C#4', 62: 'D4', 63: 'D#4', 64: 'E4', 65: 'F4',
       66: 'F#4', 67: 'G4', 68: 'G#4', 69: 'A4', 70: 'A#4', 71: 'B4',
@@ -1011,7 +1016,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
               <span className="text-blue-300">SoundFont:</span> {debugInfo.soundFontLoaded ? `✅ ${debugInfo.selectedSoundFont}` : '❌ Not Loaded'}
             </div>
             <div><span className="text-blue-300">Song SoundFont:</span> {debugInfo.songSoundFont}</div>
-            <div><span className="text-blue-300">Sampler State:</span> {debugInfo.samplerState}</div>
+            <div><span className="text-blue-300">Sampler State:</span> {debugInfo.synthState}</div>
             <div><span className="text-blue-300">Sampler Ready:</span> {debugInfo.samplerReady ? 'Yes' : 'No'}</div>
             <div><span className="text-blue-300">SoundFont Loading:</span> {debugInfo.soundFontLoading ? 'Yes' : 'No'}</div>
             <div className={`${debugInfo.backgroundPanelVisible ? 'text-green-400' : 'text-gray-400'}`}>
