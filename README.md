@@ -1,3 +1,5 @@
+
+[![Video Title](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/shorts/VIDEO_ID)
 ## Inspiration
 I was inspired by games like osu!, rocksmith, rockband, and simplypiano.
 
