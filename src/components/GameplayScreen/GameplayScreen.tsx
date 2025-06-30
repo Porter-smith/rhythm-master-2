@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { ArrowLeft, Pause, Play, Bug } from 'lucide-react';
-import { Song, GameScore } from '../../types/game';
+import { Song as GameSong, GameScore } from '../../types/game';
+import { Song as MusicSong } from '../../types/music';
 import { AudioEngine } from '../../game/AudioEngine';
 import { GameEngine } from '../../game/GameEngine';
 import { MusicPlayer } from '../../music/MusicPlayer';
@@ -10,9 +11,10 @@ import { BackgroundInstrumentsPanel } from './BackgroundInstrumentsPanel';
 import { BackgroundAudioManagerComponent, BackgroundAudioManager } from './BackgroundAudioManager';
 import { useReplayRecorder } from '../../hooks/useReplayRecorder';
 import { scoreDatabase } from '../../utils/scoreDatabase';
+import { MidiInstrument, ConnectMidi } from '../../hooks/useMidiController';
 
 interface GameplayScreenProps {
-  song: Song;
+  song: GameSong;
   difficulty: 'easy' | 'medium' | 'hard';
   audioOffset: number;
   onGameComplete: (score: GameScore) => void;
@@ -42,6 +44,55 @@ interface FilteredNote {
   isHit?: boolean;
   isMissed?: boolean;
   isActive?: boolean;
+}
+
+// Add type definitions for MIDI song
+interface MidiSong extends GameSong {
+  format: 'midi';
+  midiFiles: Record<string, string>;
+}
+
+// Helper function to convert GameSong to MusicSong
+const convertToMusicSong = (song: GameSong): MusicSong => {
+  if (song.format === 'midi') {
+    // For MIDI songs, we need to ensure midiFiles property exists
+    const midiSong = song as unknown as { midiFiles?: Record<string, string> } & GameSong;
+    return {
+      ...song,
+      format: 'midi' as const,
+      midiFiles: midiSong.midiFiles || {},
+      // Add any other required MusicSong properties here
+    } as MusicSong;
+  }
+  // For custom songs, we need to ensure it matches CustomSong type
+  return {
+    ...song,
+    format: 'custom' as const,
+    // Add any other required CustomSong properties here
+  } as MusicSong;
+};
+
+// Add type for song with optional soundFont
+interface SongWithSoundFont extends GameSong {
+  soundFont?: string;
+}
+
+// Helper function to check if song has soundFont
+const hasSoundFont = (song: GameSong): song is SongWithSoundFont => {
+  return 'soundFont' in song;
+};
+
+// Helper function to check if song is MIDI format
+const isMidiSong = (song: GameSong): song is MidiSong => {
+  return song.format === 'midi';
+};
+
+// Add type for hit timing data
+interface HitTiming {
+  noteTime: number;
+  hitTime: number;
+  accuracy: 'perfect' | 'great' | 'good' | 'miss';
+  pitch: number;
 }
 
 export const GameplayScreen: React.FC<GameplayScreenProps> = ({
@@ -79,7 +130,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [combo, setCombo] = useState(0);
   const [accuracy, setAccuracy] = useState(100);
   const [showDebug, setShowDebug] = useState(false);
-  const [loadedSong, setLoadedSong] = useState<Song | null>(null);
+  const [loadedSong, setLoadedSong] = useState<GameSong | null>(null);
   const [filteredNotes, setFilteredNotes] = useState<FilteredNote[]>([]);
   const [hitError, setHitError] = useState<{ offset: number; accuracy: 'perfect' | 'great' | 'good' | null }>({ offset: 0, accuracy: null });
   const [pressedKeys, setPressedKeys] = useState<Set<number>>(new Set());
@@ -111,7 +162,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     songArtist: song.artist,
     songBPM: song.bpm,
     songDuration: song.duration,
-    songSoundFont: (song as Song & { soundFont?: string }).soundFont || 'None (using default)',
+    songSoundFont: (song as SongWithSoundFont).soundFont || 'None (using default)',
     loadingPhase: loadingState.phase,
     originalSong: song,
     loadedSong: loadedSong,
@@ -161,14 +212,17 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         if (song.format === 'midi') {
           console.log(`🎹 MIDI song detected - need to load ${difficulty} difficulty only`);
           
+          // Convert to MusicSong type for the music player
+          const musicSong = convertToMusicSong(song);
+          
           // Create a modified song that only loads the selected difficulty
           const singleDifficultySong = {
-            ...song,
-            difficulties: [difficulty], // Only load the selected difficulty
+            ...musicSong,
+            difficulties: [difficulty] as ['easy' | 'medium' | 'hard'], // Only load the selected difficulty
             midiFiles: {
-              [difficulty]: (song as Song & { midiFiles?: Record<string, string> }).midiFiles?.[difficulty]
+              [difficulty]: (musicSong as any).midiFiles?.[difficulty] || ''
             }
-          };
+          } as MusicSong;
           
           try {
             if (!musicPlayerRef.current) {
@@ -177,7 +231,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             }
 
             console.log(`🎯 Loading only ${difficulty} difficulty to avoid loading all files`);
-            await musicPlayerRef.current.loadSong(singleDifficultySong as Song & { midiFiles?: Record<string, string> });
+            await musicPlayerRef.current.loadSong(singleDifficultySong);
             
             // Copy the loaded notes back to the original song
             if (singleDifficultySong.notes[difficulty]) {
@@ -187,8 +241,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             console.log(`✅ MIDI ${difficulty} difficulty loaded successfully`);
 
             // Load MIDI file for background instruments
-            console.log("LOADINMG THIS THLOADING THIS TIHNGK ")
-            const midiUrl = (song as Song & { midiFiles?: Record<string, string> }).midiFiles?.[difficulty];
+            const midiUrl = (musicSong as any).midiFiles?.[difficulty];
             if (midiUrl) {
               try {
                 console.log(`📂 Loading MIDI file for background audio: ${midiUrl}`);
@@ -200,7 +253,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
                 console.warn(`⚠️ Failed to load MIDI file for background audio:`, midiError);
               }
             }
-            
           } catch (midiError) {
             console.warn(`⚠️ MIDI loading failed for ${difficulty}, using fallback notes:`, midiError);
             
@@ -230,12 +282,15 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         // Phase 3: Load SoundFont
         setLoadingState({
           phase: 'loading-soundfont',
-          message: (song as Song & { soundFont?: string }).soundFont ? `Loading ${(song as Song & { soundFont?: string }).soundFont.includes('gzdoom') ? 'GZDoom' : 'Custom'} SoundFont...` : 'Loading Piano SoundFont...',
+          message: hasSoundFont(song) && song.soundFont ? 
+            `Loading ${song.soundFont.includes('gzdoom') ? 'GZDoom' : 'Custom'} SoundFont...` : 
+            'Loading Piano SoundFont...',
           progress: 60
         });
 
-        const soundFontSuccess = await loadSongSoundFont(finalSong as Song & { soundFont?: string }, selectedInstrument);
-        
+        // Convert to MusicSong type for SoundFont loading
+        const soundFontSuccess = await loadSongSoundFont(convertToMusicSong(song), selectedInstrument);
+
         if (!soundFontSuccess) {
           console.error('❌ SoundFont loading failed - cannot continue');
           setLoadingState({
@@ -586,7 +641,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         });
         
         // Check if game is complete
-        if (currentState.isComplete) {
+        if (currentState.isComplete && gameEngineRef.current) {
           // Stop recording replay
           stopRecording();
           
@@ -596,7 +651,12 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             combo: currentState.combo,
             hitStats: currentState.hitStats,
             grade: calculateGrade(currentState.accuracy),
-            hitTimings: gameEngineRef.current.getHitTimings(),
+            hitTimings: gameEngineRef.current.getHitTimings().map(timing => ({
+              noteTime: timing,  // Raw timing number
+              hitTime: timing,   // Same as noteTime for now
+              accuracy: 'good',  // Default to 'good' since we don't have detailed accuracy
+              pitch: 0          // We don't have pitch information in raw timings
+            })) as HitTiming[],
             overallDifficulty: song.overallDifficulty || 5,
             hitWindows: gameEngineRef.current.getTimingWindows()
           };
@@ -961,8 +1021,96 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     }
   }, [hitError]);
 
+  // MIDI instrument handlers with fixed velocity
+  const handleMidiStart = useCallback((note: { note: number; velocity: number }) => {
+    const targetPitch = note.note;
+    
+    // Use fixed velocity of 1 (127 in MIDI)
+    const scaledVelocity = 127;
+    
+    console.log(`🎹 MIDI Note On: pitch ${targetPitch}, velocity 1.0`);
+    
+    // Add to pressed keys (visual feedback)
+    setPressedKeys(prev => {
+      const next = new Set([...prev, targetPitch]);
+      pressedKeysRef.current = next; // Update ref immediately
+      return next;
+    });
+    
+    // Record replay event - use keydown to match keyboard events
+    recordEvent('keydown', 'midi', targetPitch);
+    
+    // ALWAYS play the sound when key is first pressed
+    if (soundFontState.isReady && playNote) {
+      console.log(`🎹 Playing sound for MIDI note: pitch=${targetPitch}, velocity=${scaledVelocity}`);
+      playNote(targetPitch, scaledVelocity, 0.5);
+    }
+    
+    // Only check for game note hits if actually playing the game
+    if (gameState === 'playing' && gameEngineRef.current) {
+      const result = gameEngineRef.current.handleInput(performance.now(), targetPitch);
+      if (result) {
+        setScore(result.score);
+        setCombo(result.combo);
+        setAccuracy(result.accuracy);
+        if (result.hitNote) {
+          // Calculate hit error in milliseconds
+          const gameTime = (performance.now() - gameEngineRef.current.getStartTime()) / 1000;
+          const adjustedNoteTime = result.hitNote.time + (audioOffset / 1000);
+          const hitErrorMs = (gameTime - adjustedNoteTime) * 1000;
+          setHitError({ offset: hitErrorMs, accuracy: result.hitAccuracy });
+          
+          // Show what note was actually hit vs what was pressed
+          setLastHitInfo({
+            pressedPitch: targetPitch,
+            hitPitch: result.hitNote.pitch,
+            timestamp: performance.now()
+          });
+          
+          console.log(`✅ HIT! Pressed ${targetPitch}, hit note ${result.hitNote.pitch}, timing: ${hitErrorMs.toFixed(1)}ms`);
+        }
+      } else {
+        console.log(`❌ No hit for pitch ${targetPitch}`);
+      }
+    }
+  }, [gameState, soundFontState.isReady, playNote, audioOffset, recordEvent]);
+
+  const handleMidiStop = useCallback((note: { stopId: number }) => {
+    const targetPitch = note.stopId;
+    
+    console.log(`🎹 MIDI Note Off: pitch ${targetPitch}`);
+    
+    // Remove from pressed keys (visual feedback)
+    setPressedKeys(prev => {
+      const next = new Set(prev);
+      next.delete(targetPitch);
+      pressedKeysRef.current = next; // Update ref immediately
+      return next;
+    });
+    
+    // Record replay event - use keyup to match keyboard events
+    recordEvent('keyup', 'midi', targetPitch);
+    
+    // Always stop sound, regardless of game state
+    if (soundFontState.isReady && stopNote) {
+      console.log(`🎹 Stopping sound for MIDI note: pitch=${targetPitch}`);
+      stopNote(targetPitch);
+    }
+  }, [soundFontState.isReady, stopNote, recordEvent]);
+
+  // Create MIDI instrument
+  const midiInstrument = {
+    start: handleMidiStart,
+    stop: handleMidiStop
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black">
+      {/* Add ConnectMidi component */}
+      <div className="hidden">
+        <ConnectMidi instrument={midiInstrument} />
+      </div>
+
       {/* Background Audio Manager - Invisible component that handles background audio */}
       {midiFileForBackground && (
         <BackgroundAudioManagerComponent
@@ -1116,12 +1264,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         </div>
       </div>
 
-      {/* Note Information Panel for Learning */}
+      {/* Note Information Panel for Learning
       {gameState === 'playing' && (
         <div className="absolute top-20 left-6 bg-black/70 backdrop-blur-sm rounded-lg p-4 text-white min-w-[280px]">
           <h3 className="text-lg font-bold text-yellow-400 mb-3">🎯 Note Information</h3>
           
-          {/* Current Hittable Notes */}
           <div className="mb-4">
             <h4 className="text-sm font-semibold text-green-400 mb-2">⚡ Hit Now! (200ms window)</h4>
             {currentNoteInfo.hittableNotes.length > 0 ? (
@@ -1144,7 +1291,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             )}
           </div>
 
-          {/* Upcoming Notes */}
           <div>
             <h4 className="text-sm font-semibold text-blue-400 mb-2">🔮 Coming Up (next 3s)</h4>
             {currentNoteInfo.upcomingNotes.length > 0 ? (
@@ -1167,14 +1313,13 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             )}
           </div>
 
-          {/* Game Time Display */}
           <div className="mt-3 pt-2 border-t border-white/20">
             <div className="text-xs text-gray-400">
               Game Time: {currentNoteInfo.gameTime.toFixed(1)}s
             </div>
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Hit Error Display */}
       {hitError.accuracy && (
