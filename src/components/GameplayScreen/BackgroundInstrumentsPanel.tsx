@@ -1,675 +1,85 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { loadSoundFont, MIDI, SpessaSynthProcessor, SpessaSynthSequencer } from 'spessasynth_core';
-import { Play, Pause, Square, Music, Volume2, AlertCircle, CheckCircle, Piano, VolumeX, ArrowLeft } from 'lucide-react';
-import { getMidiInstrumentName, getInstrumentName, getInstrumentGroup } from '../../utils/midiParser';
+import React, { useState, useEffect } from 'react';
+import { Play, Pause, Square, Piano, VolumeX, ArrowLeft } from 'lucide-react';
+import { BackgroundAudioManager } from './BackgroundAudioManager';
 
 interface BackgroundInstrumentsPanelProps {
   hideSelectedChannel?: number;
-  autoLoadMidi?: ArrayBuffer | null;
-  gameMode?: boolean;
-  soundFontUrl?: string;
-  onClose?: () => void;
+  backgroundAudioManager: BackgroundAudioManager;
+  onClose: () => void;
 }
 
 export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProps> = ({ 
   hideSelectedChannel, 
-  autoLoadMidi,
-  gameMode = false,
-  soundFontUrl,
+  backgroundAudioManager,
   onClose
 }) => {
   const [voiceList, setVoiceList] = useState<string[]>([]);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [sequencerReady, setSequencerReady] = useState(false);
-  const [channelInstruments, setChannelInstruments] = useState<Map<number, number>>(new Map());
-  const [message, setMessage] = useState(gameMode ? 'Loading background instruments...' : 'Please upload a soundfont to begin.');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showOnlyUsedChannels, setShowOnlyUsedChannels] = useState(true);
   const [mutedChannels, setMutedChannels] = useState<Set<number>>(new Set());
-  const contextRef = useRef<AudioContext | null>(null);
-  const synthRef = useRef<SpessaSynthProcessor | null>(null);
-  const seqRef = useRef<SpessaSynthSequencer | null>(null);
-  const voiceTrackingIntervalRef = useRef<number | null>(null);
-  const audioLoopIntervalRef = useRef<number | null>(null);
+  const [channelInstruments, setChannelInstruments] = useState<Map<number, number>>(new Map());
+  const [showOnlyUsedChannels, setShowOnlyUsedChannels] = useState(true);
 
+  // Update voice list periodically
   useEffect(() => {
-    const initialVoiceList: string[] = [];
-    for (let i = 0; i < 16; i++) {
-      initialVoiceList.push(`Channel ${i + 1}:\nUnknown\n`);
-    }
-    setVoiceList(initialVoiceList);
-  }, []);
-
-  // Auto-initialize in game mode
-  useEffect(() => {
-    if (gameMode && soundFontUrl) {
-      console.log('🎮 Game mode: Auto-initializing background instruments...');
-      initializeSoundFont();
-    }
-  }, [gameMode, soundFontUrl]);
-
-  // Auto-load MIDI if provided (for game mode)
-  useEffect(() => {
-    if (autoLoadMidi && sequencerReady) {
-      console.log('🎼 Auto-loading MIDI for background instruments...');
-      handleMidiFromArrayBuffer(autoLoadMidi);
-    }
-  }, [autoLoadMidi, sequencerReady]);
-
-  // Auto-mute selected channel when it changes
-  useEffect(() => {
-    if (hideSelectedChannel !== undefined && sequencerReady) {
-      console.log(`🔇 Auto-muting selected channel: ${hideSelectedChannel + 1}`);
-      const newMutedChannels = new Set(mutedChannels);
-      newMutedChannels.add(hideSelectedChannel);
-      setMutedChannels(newMutedChannels);
-      
-      // Apply mute to the synthesizer
-      if (synthRef.current && synthRef.current.midiAudioChannels[hideSelectedChannel]) {
-        try {
-          synthRef.current.midiAudioChannels[hideSelectedChannel].muteChannel(true);
-          console.log(`✅ Channel ${hideSelectedChannel + 1} muted automatically`);
-        } catch (error) {
-          console.warn('Mute function error:', error);
-        }
-      }
-    }
-  }, [hideSelectedChannel, sequencerReady]);
-
-  // Update voice list when toggle changes to ensure instrument names are preserved
-  useEffect(() => {
-    if (channelInstruments.size > 0) {
-      const newVoiceList: string[] = [];
-      for (let i = 0; i < 16; i++) {
-        const instrument = channelInstruments.get(i);
-        if (instrument !== undefined) {
-          const instrumentName = synthRef.current ? 
-            getInstrumentName(synthRef.current, instrument, i) : 'Unknown';
-          const instrumentGroup = getInstrumentGroup(instrument, i);
-          newVoiceList[i] = `Channel ${i + 1}:\n${instrumentGroup} - ${instrumentName}\n`;
-        } else {
-          newVoiceList[i] = `Channel ${i + 1}:\nUnknown\n`;
-        }
-      }
-      setVoiceList(newVoiceList);
-    }
-  }, [showOnlyUsedChannels, channelInstruments]);
-
-  const initializeSoundFont = async () => {
-    if (!soundFontUrl) {
-      setError('No SoundFont URL provided');
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setError(null);
-      setMessage('Loading SoundFont for background instruments...');
-
-      const context = new AudioContext({
-        sampleRate: 44100
-      });
-      contextRef.current = context;
-
-      await context.resume();
-
-      // Fetch the SoundFont
-      console.log(`📂 Fetching SoundFont: ${soundFontUrl}`);
-      const response = await fetch(soundFontUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch SoundFont: ${response.status} ${response.statusText}`);
-      }
-      const fontBuffer = await response.arrayBuffer();
-      console.log(`✅ SoundFont loaded: ${fontBuffer.byteLength} bytes`);
-
-      const synth = new SpessaSynthProcessor(44100);
-      synthRef.current = synth;
-      synth.soundfontManager.reloadManager(loadSoundFont(fontBuffer));
-
-      const seq = new SpessaSynthSequencer(synth);
-      seqRef.current = seq;
-      setSequencerReady(true);
-
-      setMessage('Background instruments SoundFont loaded!');
-
-      audioLoopIntervalRef.current = window.setInterval(() => {
-        const synTime = synth.currentSynthTime;
-
-        if (synTime > context.currentTime + 0.1) {
-          return;
-        }
-
-        const BUFFER_SIZE = 512;
-        const output = [new Float32Array(BUFFER_SIZE), new Float32Array(BUFFER_SIZE)];
-        const reverb = [new Float32Array(BUFFER_SIZE), new Float32Array(BUFFER_SIZE)];
-        const chorus = [new Float32Array(BUFFER_SIZE), new Float32Array(BUFFER_SIZE)];
-
-        seq.processTick();
-
-        synth.renderAudio(output, reverb, chorus);
-
-        const playAudio = (arr: Float32Array[], output: AudioNode) => {
-          const outBuffer = new AudioBuffer({
-            numberOfChannels: 2,
-            length: 512,
-            sampleRate: 44100
-          });
-
-          outBuffer.copyToChannel(arr[0], 0);
-          outBuffer.copyToChannel(arr[1], 1);
-
-          const source = new AudioBufferSourceNode(context, {
-            buffer: outBuffer
-          });
-          source.connect(output);
-
-          source.start(synTime);
-        };
-
-        playAudio(output, context.destination);
-      }, 10);
-
-    } catch (error) {
-      console.error('Error loading SoundFont:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setError(errorMessage);
-      setMessage('Error loading SoundFont for background instruments.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSoundfontUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target?.files;
-    if (!files?.[0]) {
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      setError(null);
-      setMessage('Loading soundfont...');
-
-      const context = new AudioContext({
-        sampleRate: 44100
-      });
-      contextRef.current = context;
-
-      await context.resume();
-
-      const fontBuffer = await files[0].arrayBuffer();
-
-      const synth = new SpessaSynthProcessor(44100);
-      synthRef.current = synth;
-      synth.soundfontManager.reloadManager(loadSoundFont(fontBuffer));
-
-      const seq = new SpessaSynthSequencer(synth);
-      seqRef.current = seq;
-      setSequencerReady(true);
-
-      setMessage(`SoundFont "${files[0].name}" has been loaded!`);
-
-      audioLoopIntervalRef.current = window.setInterval(() => {
-        const synTime = synth.currentSynthTime;
-
-        if (synTime > context.currentTime + 0.1) {
-          return;
-        }
-
-        const BUFFER_SIZE = 512;
-        const output = [new Float32Array(BUFFER_SIZE), new Float32Array(BUFFER_SIZE)];
-        const reverb = [new Float32Array(BUFFER_SIZE), new Float32Array(BUFFER_SIZE)];
-        const chorus = [new Float32Array(BUFFER_SIZE), new Float32Array(BUFFER_SIZE)];
-
-        seq.processTick();
-
-        synth.renderAudio(output, reverb, chorus);
-
-        const playAudio = (arr: Float32Array[], output: AudioNode) => {
-          const outBuffer = new AudioBuffer({
-            numberOfChannels: 2,
-            length: 512,
-            sampleRate: 44100
-          });
-
-          outBuffer.copyToChannel(arr[0], 0);
-          outBuffer.copyToChannel(arr[1], 1);
-
-          const source = new AudioBufferSourceNode(context, {
-            buffer: outBuffer
-          });
-          source.connect(output);
-
-          source.start(synTime);
-        };
-
-        playAudio(output, context.destination);
-      }, 10);
-
-    } catch (error) {
-      console.error('Error loading soundfont:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setError(errorMessage);
-      setMessage('Error loading soundfont. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleMidiFromArrayBuffer = async (arrayBuffer: ArrayBuffer) => {
-    if (!seqRef.current) {
-      console.warn('⚠️ Sequencer not ready for MIDI loading');
-      return;
-    }
-
-    try {
-      setMessage('Loading MIDI file for background instruments...');
-      
-      const midi = new MIDI(arrayBuffer);
-      seqRef.current.loadNewSongList([midi]);
-      
-      // Parse MIDI to get instrument information
-      const data = new Uint8Array(arrayBuffer);
-      let pos = 0;
-
-      // Helper functions for reading binary data
-      const read32 = (): number => (data[pos++] << 24) | (data[pos++] << 16) | (data[pos++] << 8) | data[pos++];
-      const read16 = (): number => (data[pos++] << 8) | data[pos++];
-      const read8 = (): number => data[pos++];
-      const readVarLength = (): number => {
-        let value = 0;
-        let byte: number;
-        do {
-          byte = read8();
-          value = (value << 7) | (byte & 0x7F);
-        } while (byte & 0x80);
-        return value;
-      };
-
-      // Validate MIDI header
-      if (data[0] !== 77 || data[1] !== 84 || data[2] !== 104 || data[3] !== 100) {
-        throw new Error('Invalid MIDI file header');
-      }
-      pos = 4;
-
-      // Read header chunk
-      read32(); // Skip header length
-      read16(); // Skip format
-      const trackCount = read16();
-      read16(); // Skip ticks per quarter
-
-      const instruments = new Map<number, number>();
-
-      // Process each track
-      for (let trackIndex = 0; trackIndex < trackCount; trackIndex++) {
-        // Validate track header
-        if (data[pos++] !== 77 || data[pos++] !== 84 || data[pos++] !== 114 || data[pos++] !== 107) {
-          continue;
-        }
-
-        const trackLength = read32();
-        const trackEnd = pos + trackLength;
-        let runningStatus = 0;
-
-        // Process track events
-        while (pos < trackEnd) {
-          const deltaTime = readVarLength();
-          
-          let command = read8();
-          if (command < 0x80) {
-            pos--;
-            command = runningStatus;
-          } else {
-            runningStatus = command;
-          }
-
-          const messageType = command & 0xF0;
-          const channel = command & 0x0F;
-
-          if (messageType === 0xC0) {
-            // Program Change (instrument selection)
-            const instrument = read8();
-            instruments.set(channel, instrument);
-          } else if (command === 0xFF) {
-            // Meta event
-            const metaType = read8();
-            const metaLength = readVarLength();
-            pos += metaLength;
-          } else if (messageType === 0x90 || messageType === 0x80) {
-            // Note On/Off (2 bytes)
-            read8();
-            read8();
-          } else if (messageType === 0xA0 || messageType === 0xB0 || messageType === 0xE0) {
-            // Aftertouch, Control Change, Pitch Bend (2 bytes)
-            read8();
-            read8();
-          } else if (messageType === 0xD0) {
-            // Channel Pressure (1 byte)
-            read8();
-          } else if (command >= 0xF0) {
-            // System exclusive
-            const sysexLength = readVarLength();
-            pos += sysexLength;
-          }
-        }
-      }
-
-      setChannelInstruments(instruments);
-      setMessage(gameMode ? 'Background instruments loaded and ready!' : `Now playing: MIDI file`);
-      
-      // Immediately populate voice list with instrument names
-      const newVoiceList: string[] = [];
-      for (let i = 0; i < 16; i++) {
-        const instrument = instruments.get(i);
-        if (instrument !== undefined) {
-          const instrumentName = synthRef.current ? 
-            getInstrumentName(synthRef.current, instrument, i) : 'Unknown';
-          const instrumentGroup = getInstrumentGroup(instrument, i);
-          newVoiceList[i] = `Channel ${i + 1}:\n${instrumentGroup} - ${instrumentName}\n`;
-        } else {
-          newVoiceList[i] = `Channel ${i + 1}:\nUnknown\n`;
-        }
-      }
-      setVoiceList(newVoiceList);
-      
-      console.log('🎹 Parsed background instruments:', Array.from(instruments.entries()).map(([ch, prog]) => 
-        `Channel ${ch + 1}: ${getMidiInstrumentName(prog, ch)}`
-      ));
-
-      // Auto-start in game mode
-      if (gameMode) {
-        setTimeout(() => {
-          togglePlayPause();
-        }, 1000);
-      }
-    } catch (error) {
-      console.error('Error parsing MIDI instruments:', error);
-      setMessage('Error loading MIDI file. Please try again.');
-    }
-
-    // Song automatically plays, so we need to pause it
-    if (!gameMode) {
-      seqRef.current.pause();
-      setIsPlaying(false);
-    }
-  };
-
-  const handleMidiUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target?.files?.[0] || !seqRef.current) {
-      return;
-    }
-
-    const file = e.target.files[0];
-    const arrayBuffer = await file.arrayBuffer();
-    await handleMidiFromArrayBuffer(arrayBuffer);
-  };
-
-  const togglePlayPause = () => {
-    if (!seqRef.current) return;
-
-    if (isPlaying) {
-      seqRef.current.pause();
-      setIsPlaying(false);
-      // Stop voice tracking interval when paused
-      if (voiceTrackingIntervalRef.current) {
-        clearInterval(voiceTrackingIntervalRef.current);
-        voiceTrackingIntervalRef.current = null;
-      }
-      // Don't clear voice list when paused - preserve instrument names
-      // Just remove the note information but keep instrument names
-      const preservedVoiceList = voiceList.map(text => {
-        const lines = text.split('\n');
-        const instrumentLine = lines[1] || 'Unknown';
-        return `${lines[0]}\n${instrumentLine}\n`;
-      });
-      setVoiceList(preservedVoiceList);
-    } else {
-      seqRef.current.play();
-      setIsPlaying(true);
-      // Restart voice tracking interval when playing
-      if (synthRef.current && !voiceTrackingIntervalRef.current) {
-        voiceTrackingIntervalRef.current = window.setInterval(() => {
-          const newVoiceList: string[] = [];
-          let hasChanges = false;
-
-          synthRef.current!.midiAudioChannels.forEach((c, chanNum) => {
-            const instrument = channelInstruments.get(chanNum);
-            const instrumentName = instrument !== undefined ? 
-              getInstrumentName(synthRef.current!, instrument, chanNum) : 'Unknown';
-            const instrumentGroup = instrument !== undefined ? 
-              getInstrumentGroup(instrument, chanNum) : 'Unknown';
-            let text = `Channel ${chanNum + 1}:\n${instrumentGroup} - ${instrumentName}\n`;
-
-            c.voices.forEach(v => {
-              text += `note: ${v.midiNote}\n`;
-            });
-
-            newVoiceList[chanNum] = text;
-            
-            // Check if this channel's text has changed
-            if (voiceList[chanNum] !== text) {
-              hasChanges = true;
-            }
-          });
-
-          // Only update state if there are actual changes
-          if (hasChanges) {
-            setVoiceList(newVoiceList);
-          }
-        }, 100);
-      }
-    }
-  };
-
-  const handleStop = () => {
-    if (!seqRef.current) return;
-    
-    seqRef.current.stop();
-    setIsPlaying(false);
-    
-    // Stop voice tracking interval
-    if (voiceTrackingIntervalRef.current) {
-      clearInterval(voiceTrackingIntervalRef.current);
-      voiceTrackingIntervalRef.current = null;
-    }
-    
-    // Don't clear voice list when stopped - preserve instrument names
-    // Just remove the note information but keep instrument names
-    const preservedVoiceList = voiceList.map(text => {
-      const lines = text.split('\n');
-      const instrumentLine = lines[1] || 'Unknown';
-      return `${lines[0]}\n${instrumentLine}\n`;
-    });
-    setVoiceList(preservedVoiceList);
-  };
-
-  const toggleMuteChannel = (channelNum: number) => {
-    const newMutedChannels = new Set(mutedChannels);
-    if (newMutedChannels.has(channelNum)) {
-      newMutedChannels.delete(channelNum);
-    } else {
-      newMutedChannels.add(channelNum);
-    }
-    setMutedChannels(newMutedChannels);
-    
-    // Apply mute to the synthesizer if available
-    if (synthRef.current && synthRef.current.midiAudioChannels[channelNum]) {
-      const isMuted = newMutedChannels.has(channelNum);
-      try {
-        // Call muteChannel on the individual MidiAudioChannel object
-        synthRef.current.midiAudioChannels[channelNum].muteChannel(isMuted);
-        console.log(`Channel ${channelNum + 1} ${isMuted ? 'muted' : 'unmuted'}`);
-      } catch (error) {
-        console.warn('Mute function error:', error);
-        console.log(`Channel ${channelNum + 1} ${isMuted ? 'muted' : 'unmuted'} (visual only)`);
-      }
-    }
-  };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (voiceTrackingIntervalRef.current) {
-        clearInterval(voiceTrackingIntervalRef.current);
-      }
-      if (audioLoopIntervalRef.current) {
-        clearInterval(audioLoopIntervalRef.current);
-      }
-      if (contextRef.current) {
-        contextRef.current.close();
+    const updateVoiceList = () => {
+      if (backgroundAudioManager) {
+        const newVoiceList = backgroundAudioManager.getVoiceList();
+        setVoiceList(newVoiceList);
+        
+        const newMutedChannels = backgroundAudioManager.getMutedChannels();
+        setMutedChannels(newMutedChannels);
+        
+        const newChannelInstruments = backgroundAudioManager.getChannelInstruments();
+        setChannelInstruments(newChannelInstruments);
       }
     };
-  }, []);
+
+    // Update immediately
+    updateVoiceList();
+
+    // Update every 100ms
+    const interval = setInterval(updateVoiceList, 100);
+
+    return () => clearInterval(interval);
+  }, [backgroundAudioManager]);
+
+  const toggleMuteChannel = (channelNum: number) => {
+    const isMuted = mutedChannels.has(channelNum);
+    backgroundAudioManager.muteChannel(channelNum, !isMuted);
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header for game mode */}
-      {gameMode && onClose && (
-        <div className="flex items-center justify-between mb-6">
-          <button
-            onClick={onClose}
-            className="flex items-center space-x-2 text-white/70 hover:text-white transition-colors duration-200 group"
-          >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform duration-200" />
-            <span>Back to Game</span>
-          </button>
-          
-          <h1 className="text-2xl font-bold text-white text-center flex-1">
-            🎼 Background Instruments
-          </h1>
-          
-          <div className="w-24"></div>
-        </div>
-      )}
-
-      {/* SoundFont Upload - Hide in game mode */}
-      {!gameMode && (
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
-            <Volume2 className="w-5 h-5 text-blue-400" />
-            <span>SoundFont Upload</span>
-          </h2>
-          
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="soundfont_input" className="block text-sm font-medium text-white/70 mb-2">
-                Upload SoundFont:
-              </label>
-              <input 
-                accept=".sf2, .sf3, .dls" 
-                id="soundfont_input" 
-                type="file" 
-                onChange={handleSoundfontUpload}
-                disabled={isLoading}
-                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
-            
-            <div className="text-sm text-white/60">
-              Supported formats: .sf2, .sf3, .dls
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MIDI File Upload - Hide in game mode */}
-      {!gameMode && (
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
-            <Music className="w-5 h-5 text-purple-400" />
-            <span>MIDI File Upload</span>
-          </h2>
-          
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="midi_input" className="block text-sm font-medium text-white/70 mb-2">
-                Upload MIDI File:
-              </label>
-              <input 
-                accept=".midi, .mid, .rmi, .smf" 
-                id="midi_input" 
-                type="file" 
-                onChange={handleMidiUpload}
-                disabled={!sequencerReady}
-                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
-            
-            <div className="text-sm text-white/60">
-              Supported formats: .mid, .midi, .rmi, .smf
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Status Message */}
-      <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-        <div className="flex items-center space-x-3 mb-4">
-          {error ? (
-            <AlertCircle className="w-5 h-5 text-red-400" />
-          ) : isLoading ? (
-            <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full" />
-          ) : (
-            <CheckCircle className="w-5 h-5 text-green-400" />
-          )}
-          <h2 className="text-xl font-bold text-white">Status</h2>
-        </div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <button
+          onClick={onClose}
+          className="flex items-center space-x-2 text-white/70 hover:text-white transition-colors duration-200 group"
+        >
+          <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform duration-200" />
+          <span>Back to Game</span>
+        </button>
         
-        <p className="text-white/80">
-          {message}
-        </p>
+        <h1 className="text-2xl font-bold text-white text-center flex-1">
+          🎼 Background Instruments Control
+        </h1>
         
-        {error && (
-          <p className="text-red-400 text-sm mt-2">
-            Error: {error}
-          </p>
-        )}
-
-        {gameMode && hideSelectedChannel !== undefined && (
-          <div className="mt-4 p-3 bg-yellow-900/50 border border-yellow-500/50 rounded-lg">
-            <p className="text-yellow-200 text-sm">
-              <strong>🎮 Game Mode:</strong> Your selected instrument (Channel {hideSelectedChannel + 1}) is hidden from the list below since you're playing it manually.
-            </p>
-          </div>
-        )}
+        <div className="w-24"></div>
       </div>
 
-      {/* Playback Controls */}
-      {sequencerReady && (
-        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-          <h2 className="text-xl font-bold text-white mb-4">Playback Controls</h2>
-          
-          <div className="flex items-center justify-center space-x-4">
-            <button
-              onClick={togglePlayPause}
-              disabled={!sequencerReady}
-              className="flex items-center space-x-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200"
-            >
-              {isPlaying ? (
-                <>
-                  <Pause className="w-5 h-5" />
-                  <span>Pause</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-5 h-5" />
-                  <span>Play</span>
-                </>
-              )}
-            </button>
-            
-            <button
-              onClick={handleStop}
-              disabled={!sequencerReady}
-              className="flex items-center space-x-2 px-6 py-3 bg-red-500 hover:bg-red-600 disabled:bg-gray-500 disabled:cursor-not-allowed text-white rounded-lg transition-colors duration-200"
-            >
-              <Square className="w-5 h-5" />
-              <span>Stop</span>
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Instructions */}
+      <div className="bg-blue-900/50 border border-blue-500/50 rounded-lg p-4">
+        <h3 className="text-blue-300 font-bold mb-2">🎵 Background Instruments Control</h3>
+        <p className="text-blue-200 text-sm mb-2">
+          Background instruments are playing automatically with the game. Your selected instrument 
+          <strong className="text-yellow-300"> (Channel {hideSelectedChannel ? hideSelectedChannel + 1 : 'N/A'}) </strong> 
+          is hidden and muted since you're playing it manually.
+        </p>
+        <p className="text-blue-200 text-sm">
+          • <strong>Mute/unmute</strong> individual channels to customize your backing track<br/>
+          • <strong>Background audio</strong> automatically syncs with game play/pause<br/>
+          • <strong>Close this panel</strong> to return to the game - background audio continues
+        </p>
+      </div>
 
       {/* Voice List */}
       {channelInstruments.size > 0 && (
@@ -677,7 +87,7 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-white flex items-center space-x-2">
               <Piano className="w-5 h-5 text-green-400" />
-              <span>{gameMode ? 'Background Instruments' : 'Instruments & Voices'}</span>
+              <span>Background Instruments</span>
             </h2>
             
             <div className="flex items-center space-x-3">
@@ -699,8 +109,8 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
               const instrument = channelInstruments.get(channelNum);
               const voiceText = voiceList[channelNum] || `Channel ${channelNum + 1}:\nUnknown\n`;
               
-              // Hide selected channel in game mode
-              if (gameMode && hideSelectedChannel === channelNum) {
+              // Hide selected channel
+              if (hideSelectedChannel === channelNum) {
                 return null;
               }
               
@@ -714,21 +124,12 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
               const isActive = noteLines.length > 0;
               
               // Check if this channel is used (has an instrument assigned or is currently active)
-              // For filtering, we consider a channel used if it has an instrument OR if we're not filtering
               const isUsed = instrument !== undefined || isActive || !showOnlyUsedChannels;
               
               // Skip rendering if channel is not used and we're showing only used channels
               if (!isUsed) {
                 return null;
               }
-              
-              // Get note names for display
-              const getNoteName = (pitch: number): string => {
-                const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-                const octave = Math.floor(pitch / 12) - 1;
-                const noteName = noteNames[pitch % 12];
-                return `${noteName}${octave}`;
-              };
               
               // Extract note numbers from note lines
               const playingNotes = noteLines.map(line => {
@@ -801,7 +202,7 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
                           <span 
                             key={noteIndex} 
                             className="px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded font-mono"
-                            title={`Note ${note} (${getNoteName(note)})`}
+                            title={`Note ${note}`}
                           >
                             {note}
                           </span>
@@ -818,27 +219,19 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
           
           <div className="mt-4 pt-4 border-t border-white/10">
             <div className="text-sm text-white/60">
-              {showOnlyUsedChannels ? (
-                <>
-                  Used Channels: {Array.from({ length: 16 }).filter((_, index) => {
-                    if (gameMode && hideSelectedChannel === index) return false;
-                    const instrument = channelInstruments.get(index);
-                    const voiceText = voiceList[index] || '';
-                    const isActive = voiceText.includes('note:');
-                    return instrument !== undefined || isActive;
-                  }).length} •
-                </>
-              ) : (
-                <>
-                  Total Channels: {gameMode && hideSelectedChannel !== undefined ? '15' : '16'} • 
-                </>
-              )}
+              Used Channels: {Array.from({ length: 16 }).filter((_, index) => {
+                if (hideSelectedChannel === index) return false;
+                const instrument = channelInstruments.get(index);
+                const voiceText = voiceList[index] || '';
+                const isActive = voiceText.includes('note:');
+                return instrument !== undefined || isActive;
+              }).length} •
               Active Channels: {voiceList.filter(text => text.includes('note:')).length} •
               Total Active Notes: {voiceList.reduce((sum, text) => {
                 const noteMatches = text.match(/note:/g);
                 return sum + (noteMatches ? noteMatches.length : 0);
               }, 0)}
-              {gameMode && hideSelectedChannel !== undefined && (
+              {hideSelectedChannel !== undefined && (
                 <> • Hidden: Channel {hideSelectedChannel + 1} (Your Instrument)</>
               )}
             </div>

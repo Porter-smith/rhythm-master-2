@@ -7,6 +7,7 @@ import { MusicPlayer } from '../../music/MusicPlayer';
 import { LoadingScreen } from './LoadingScreen';
 import { useSoundFontManager } from './SoundFontManager';
 import { BackgroundInstrumentsPanel } from './BackgroundInstrumentsPanel';
+import { BackgroundAudioManagerComponent, BackgroundAudioManager } from './BackgroundAudioManager';
 
 interface GameplayScreenProps {
   song: Song;
@@ -55,6 +56,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const animationFrameRef = useRef<number>();
   const musicPlayerRef = useRef<MusicPlayer | null>(null);
   const initializationRef = useRef<boolean>(false);
+  const backgroundAudioRef = useRef<BackgroundAudioManager | null>(null);
   
   // SoundFont state using the manager
   const { soundFontState, loadSongSoundFont, playNote } = useSoundFontManager();
@@ -78,6 +80,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   // Background instruments state
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false);
   const [midiFileForBackground, setMidiFileForBackground] = useState<ArrayBuffer | null>(null);
+  const [backgroundAudioReady, setBackgroundAudioReady] = useState(false);
 
   // Debug information
   const debugInfo = {
@@ -102,7 +105,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     samplerReady: soundFontState.isReady,
     soundFontLoading: soundFontState.isLoading,
     backgroundPanelVisible: showBackgroundPanel,
-    midiFileLoaded: !!midiFileForBackground
+    midiFileLoaded: !!midiFileForBackground,
+    backgroundAudioReady: backgroundAudioReady
   };
 
   // Initialize game with proper loading phases - ONLY RUN ONCE
@@ -167,17 +171,17 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             
             console.log(`✅ MIDI ${difficulty} difficulty loaded successfully`);
 
-            // Load MIDI file for background instruments panel
+            // Load MIDI file for background instruments
             const midiUrl = (song as any).midiFiles?.[difficulty];
             if (midiUrl) {
               try {
-                console.log(`📂 Loading MIDI file for background panel: ${midiUrl}`);
+                console.log(`📂 Loading MIDI file for background audio: ${midiUrl}`);
                 const response = await fetch(midiUrl);
                 const arrayBuffer = await response.arrayBuffer();
                 setMidiFileForBackground(arrayBuffer);
-                console.log(`✅ MIDI file loaded for background panel`);
+                console.log(`✅ MIDI file loaded for background audio`);
               } catch (midiError) {
-                console.warn(`⚠️ Failed to load MIDI file for background panel:`, midiError);
+                console.warn(`⚠️ Failed to load MIDI file for background audio:`, midiError);
               }
             }
             
@@ -489,11 +493,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     }
 
     // Background instruments indicator
-    if (midiFileForBackground) {
+    if (backgroundAudioReady) {
       ctx.fillStyle = '#ff8800';
       ctx.font = '14px Arial';
       ctx.textAlign = 'left';
-      ctx.fillText(`🎼 Background Instruments Available (Press B)`, 20, height - 40);
+      ctx.fillText(`🎼 Background Audio Playing (Press B for controls)`, 20, height - 40);
     }
   };
 
@@ -535,8 +539,26 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     }
   }, [gameState]);
 
+  // Handle background audio manager ready
+  const handleBackgroundAudioReady = (manager: BackgroundAudioManager) => {
+    backgroundAudioRef.current = manager;
+    setBackgroundAudioReady(true);
+    console.log('🎼 Background audio manager is ready and will auto-start with game');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black">
+      {/* Background Audio Manager - Invisible component that handles background audio */}
+      {midiFileForBackground && (
+        <BackgroundAudioManagerComponent
+          midiFile={midiFileForBackground}
+          soundFontUrl={(song as any).soundFont || '/soundfonts/Equinox_Grand_Pianos.sf2'}
+          hideSelectedChannel={selectedInstrument?.channel}
+          isGamePlaying={gameState === 'playing'}
+          onReady={handleBackgroundAudioReady}
+        />
+      )}
+
       {/* Selected Instrument Debug Display */}
       {selectedInstrument && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-green-900/80 text-green-200 px-6 py-2 rounded-xl shadow-lg z-50 font-mono text-lg flex items-center space-x-4">
@@ -568,8 +590,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           {soundFontState.isReady && (
             <p className="text-green-400 text-sm">🎹 {soundFontState.selectedSoundFont} Ready</p>
           )}
-          {midiFileForBackground && (
-            <p className="text-orange-400 text-sm">🎼 Background Instruments Available</p>
+          {backgroundAudioReady && (
+            <p className="text-orange-400 text-sm">🎼 Background Audio Playing</p>
           )}
         </div>
 
@@ -597,14 +619,12 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       )}
 
       {/* Background Instruments Panel */}
-      {showBackgroundPanel && midiFileForBackground && (
+      {showBackgroundPanel && backgroundAudioRef.current && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 overflow-y-auto">
           <div className="min-h-screen p-8">
             <BackgroundInstrumentsPanel 
               hideSelectedChannel={selectedInstrument?.channel}
-              autoLoadMidi={midiFileForBackground}
-              gameMode={true}
-              soundFontUrl={(song as any).soundFont || '/soundfonts/Equinox_Grand_Pianos.sf2'}
+              backgroundAudioManager={backgroundAudioRef.current}
               onClose={() => setShowBackgroundPanel(false)}
             />
           </div>
@@ -638,6 +658,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             <div className={`${debugInfo.midiFileLoaded ? 'text-green-400' : 'text-red-400'}`}>
               <span className="text-blue-300">MIDI for Background:</span> {debugInfo.midiFileLoaded ? 'Loaded' : 'Not Loaded'}
             </div>
+            <div className={`${debugInfo.backgroundAudioReady ? 'text-green-400' : 'text-red-400'}`}>
+              <span className="text-blue-300">Background Audio:</span> {debugInfo.backgroundAudioReady ? 'Ready & Playing' : 'Not Ready'}
+            </div>
           </div>
         </div>
       )}
@@ -661,8 +684,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           {soundFontState.isReady && (
             <div className="text-xs text-green-400">🎹 SoundFont Active</div>
           )}
-          {midiFileForBackground && (
-            <div className="text-xs text-orange-400">🎼 Background Available</div>
+          {backgroundAudioReady && (
+            <div className="text-xs text-orange-400">🎼 Background Playing</div>
           )}
         </div>
       </div>
@@ -677,8 +700,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             {soundFontState.isReady && (
               <p className="text-green-400 text-xl">🎹 {soundFontState.selectedSoundFont} Ready!</p>
             )}
-            {midiFileForBackground && (
-              <p className="text-orange-400 text-lg">🎼 Background Instruments Ready!</p>
+            {backgroundAudioReady && (
+              <p className="text-orange-400 text-lg">🎼 Background Audio Ready!</p>
             )}
           </div>
         </div>
@@ -694,8 +717,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             {soundFontState.isReady && (
               <p className="text-green-400 mt-2">🎹 {soundFontState.selectedSoundFont} Ready</p>
             )}
-            {midiFileForBackground && (
-              <p className="text-orange-400 mt-1">🎼 Background Instruments Paused</p>
+            {backgroundAudioReady && (
+              <p className="text-orange-400 mt-1">🎼 Background Audio Paused</p>
             )}
           </div>
         </div>
@@ -703,12 +726,12 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
       {/* Instructions */}
       <div className="absolute bottom-6 left-6 text-white/70 text-sm">
-        <p>Press SPACEBAR to hit notes • ESC to pause • F12 for debug info • B for background instruments</p>
+        <p>Press SPACEBAR to hit notes • ESC to pause • F12 for debug info • B for background controls</p>
         {soundFontState.isReady && (
           <p className="text-green-400">🎵 Professional audio with {soundFontState.selectedSoundFont} SoundFont</p>
         )}
-        {midiFileForBackground && (
-          <p className="text-orange-400">🎼 Background instruments available - Press B to control</p>
+        {backgroundAudioReady && (
+          <p className="text-orange-400">🎼 Background instruments playing automatically</p>
         )}
       </div>
     </div>
