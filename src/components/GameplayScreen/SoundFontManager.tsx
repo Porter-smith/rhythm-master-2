@@ -314,11 +314,14 @@ export const useSoundFontManager = () => {
     // ALWAYS use the current state from ref, not the stale closure state
     const currentState = stateRef.current;
     
+    // Use the provided channel or fall back to selectedInstrument's channel if available
+    const effectiveChannel = currentState.selectedInstrument?.channel ?? channel;
+    
     console.log(`🎹 SoundFont callback called:`, {
       pitch,
       velocity,
       duration,
-      channel,
+      channel: effectiveChannel,
       synthExists: !!currentState.synth,
       isReady: currentState.isReady,
       isLoading: currentState.isLoading,
@@ -345,16 +348,16 @@ export const useSoundFontManager = () => {
     try {
       // First ensure the correct program is set
       if (currentState.selectedInstrument) {
-        programChange(channel, currentState.selectedInstrument.instrument);
+        programChange(effectiveChannel, currentState.selectedInstrument.instrument);
       }
 
       // Use SpessaSynth's noteOn method (following the example pattern)
       const scaledVelocity = Math.min(127, velocity); // Ensure velocity is in valid range
       
-      console.log(`🎵 Playing SpessaSynth note: channel=${channel}, pitch=${pitch}, velocity=${scaledVelocity}`);
+      console.log(`🎵 Playing SpessaSynth note: channel=${effectiveChannel}, pitch=${pitch}, velocity=${scaledVelocity}`);
 
       // NOTE ON - Start the note
-      currentState.synth.noteOn(channel, pitch, scaledVelocity);
+      currentState.synth.noteOn(effectiveChannel, pitch, scaledVelocity);
       
       // Add to playing notes
       setSoundFontState(prev => ({
@@ -362,7 +365,7 @@ export const useSoundFontManager = () => {
         playingNotes: new Set([...prev.playingNotes, pitch])
       }));
       
-      console.log(`✅ SpessaSynth note played successfully: ${pitch} on channel ${channel}`);
+      console.log(`✅ SpessaSynth note played successfully: ${pitch} on channel ${effectiveChannel}`);
       return pitch; // Return pitch as stopId
     } catch (err) {
       console.error('❌ Failed to play note with SpessaSynth:', err);
