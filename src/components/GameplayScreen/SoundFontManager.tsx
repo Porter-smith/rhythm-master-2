@@ -344,12 +344,29 @@ export const useSoundFontManager = () => {
       // For now, we'll use the same instrument but could be enhanced to load multiple instruments
       
       // Find the instrument by name in the soundfont
-      if (!currentState.selectedInstrument || !currentState.sampler.instrumentNames) {
-        console.error('❌ No selected instrument or no instrument names available');
+      if (!currentState.sampler.instrumentNames || currentState.sampler.instrumentNames.length === 0) {
+        console.error('❌ No instrument names available in sampler');
         return false;
       }
 
       const instruments = currentState.sampler.instrumentNames;
+      
+      // If no instrument is selected, use the first available instrument
+      if (!currentState.selectedInstrument) {
+        console.log(`ℹ️ No instrument selected, using first available instrument: "${instruments[0]}"`);
+        const noteToPlay = {
+          note: pitch,
+          velocity: Math.min(127, velocity * 0.8), // Use scaled velocity
+          detune: 0,
+          time: currentState.sampler.context.currentTime,
+          duration: duration,
+          instrument: instruments[0]
+        };
+        
+        currentState.sampler.start(noteToPlay);
+        console.log(`✅ SoundFont note played successfully: ${pitch} with default instrument "${instruments[0]}" on channel ${channel} (volume balanced)`);
+        return true;
+      }
       console.log(`🎹 Available instruments:`, instruments);
       console.log(`🎹 Looking for instrument: "${currentState.selectedInstrument.name}"`);
       

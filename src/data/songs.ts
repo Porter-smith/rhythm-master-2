@@ -75,6 +75,7 @@ export const customSongs: CustomSong[] = [
     difficulties: ['easy', 'medium', 'hard'],
     bpm: 140,
     format: 'custom',
+    soundFont: 'https://smpldsnds.github.io/soundfonts/soundfonts/yamaha-grand-lite.sf2',
     overallDifficulty: 4,
     notes: {
       easy: [
