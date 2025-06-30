@@ -112,7 +112,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const backgroundAudioRef = useRef<BackgroundAudioManager | null>(null);
   
   // SoundFont state using the manager
-  const { soundFontState, loadSongSoundFont, playNote, stopNote, stopAllNotes } = useSoundFontManager();
+  const { soundFontState, loadSongSoundFont, playNote, stopNote, stopAllNotes, programChange } = useSoundFontManager();
   
   // Replay recording
   const { isRecording, recordedEvents, startRecording, stopRecording, recordEvent, clearRecording } = useReplayRecorder();
@@ -291,6 +291,12 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         // Convert to MusicSong type for SoundFont loading
         const soundFontSuccess = await loadSongSoundFont(convertToMusicSong(song), selectedInstrument);
 
+        // Set up the selected instrument's program if available
+        if (soundFontSuccess && selectedInstrument) {
+          console.log(`🎹 Setting up instrument: Channel ${selectedInstrument.channel}, Program ${selectedInstrument.instrument}`);
+          programChange(selectedInstrument.channel, selectedInstrument.instrument);
+        }
+
         if (!soundFontSuccess) {
           console.error('❌ SoundFont loading failed - cannot continue');
           setLoadingState({
@@ -361,10 +367,16 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         isReady: soundFontState.isReady
       });
       
-      // Create a wrapper callback that matches GameEngine's expected signature
+      // Update the soundFontCallback to ensure program is set before playing notes
       const soundFontCallback = (pitch: number, velocity: number, duration: number): boolean => {
-        const result = playNote(pitch, velocity, duration);
-        return result !== false; // Convert number | false to boolean
+        if (soundFontState.isReady && playNote && selectedInstrument) {
+          // Ensure the correct program is set on the channel
+          programChange(selectedInstrument.channel, selectedInstrument.instrument);
+          // Use the selected instrument's channel
+          const channel = selectedInstrument.channel;
+          return !!playNote(pitch, velocity, duration, channel);
+        }
+        return false;
       };
       
       gameEngineRef.current.setSoundFontCallback(soundFontCallback);
@@ -395,8 +407,12 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             
             // Create a wrapper callback that matches GameEngine's expected signature
             const soundFontCallback = (pitch: number, velocity: number, duration: number): boolean => {
-              const result = playNote(pitch, velocity, duration);
-              return result !== false; // Convert number | false to boolean
+              if (soundFontState.isReady && playNote) {
+                // Use the selected instrument's channel if available, otherwise default to 0
+                const channel = selectedInstrument?.channel ?? 0;
+                return !!playNote(pitch, velocity, duration, channel);
+              }
+              return false;
             };
             
             gameEngineRef.current.setSoundFontCallback(soundFontCallback);
@@ -854,7 +870,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     });
 
     // Show pressed keys on the hit line
-    console.log(`🎹 Rendering pressed keys:`, Array.from(pressedKeysRef.current));
     pressedKeysRef.current.forEach(pitch => {
       const isTreble = pitch >= 60 && pitch <= 84;
       const y = noteToY(pitch, isTreble);

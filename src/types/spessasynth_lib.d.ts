@@ -16,6 +16,7 @@ declare module 'spessasynth_lib' {
     muteChannel(channel: number, isMuted: boolean): void;
     noteOn(channel: number, note: number, velocity: number): void;
     noteOff(channel: number, note: number): void;
+    programChange(channel: number, program: number): void;
     presetList: PresetInfo[];
     midiAudioChannels: MidiChannel[];
     isReady: Promise<void>;

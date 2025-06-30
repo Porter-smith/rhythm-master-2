@@ -290,6 +290,25 @@ export const useSoundFontManager = () => {
     }
   }, [loadSoundFont]);
 
+  // Program change - set the instrument for a channel
+  const programChange = useCallback((channel: number, program: number): boolean => {
+    const currentState = stateRef.current;
+    
+    if (!currentState.synth || !currentState.isReady) {
+      console.log('❌ Cannot change program: synth not ready');
+      return false;
+    }
+
+    try {
+      console.log(`🎹 Setting program: channel=${channel}, program=${program}`);
+      currentState.synth.programChange(channel, program);
+      return true;
+    } catch (err) {
+      console.error('❌ Failed to change program:', err);
+      return false;
+    }
+  }, []);
+
   // Play note using SpessaSynth - PROPER noteOn/noteOff pattern
   const playNote = useCallback((pitch: number, velocity: number = 80, duration: number = 0.5, channel: number = 0): number | false => {
     // ALWAYS use the current state from ref, not the stale closure state
@@ -324,8 +343,12 @@ export const useSoundFontManager = () => {
     }
 
     try {
+      // First ensure the correct program is set
+      if (currentState.selectedInstrument) {
+        programChange(channel, currentState.selectedInstrument.instrument);
+      }
+
       // Use SpessaSynth's noteOn method (following the example pattern)
-      // Channel 0, pitch, velocity 127 (max)
       const scaledVelocity = Math.min(127, velocity); // Ensure velocity is in valid range
       
       console.log(`🎵 Playing SpessaSynth note: channel=${channel}, pitch=${pitch}, velocity=${scaledVelocity}`);
@@ -358,9 +381,8 @@ export const useSoundFontManager = () => {
 
     try {
       // Use SpessaSynth's noteOff method
-      // We need to determine which channel the note is on
-      // For now, we'll use channel 0 (the default channel for manual playing)
-      const channel = 0;
+      // Use the selected instrument's channel if available, otherwise default to 0
+      const channel = currentState.selectedInstrument?.channel ?? 0;
       
       console.log(`🛑 Stopping SpessaSynth note: channel=${channel}, pitch=${pitch}`);
       currentState.synth.noteOff(channel, pitch);
@@ -371,7 +393,7 @@ export const useSoundFontManager = () => {
         playingNotes: new Set([...prev.playingNotes].filter(note => note !== pitch))
       }));
       
-      console.log(`✅ Stopped note: ${pitch}`);
+      console.log(`✅ Stopped note: ${pitch} on channel ${channel}`);
       return true;
     } catch (err) {
       console.error('❌ Failed to stop note:', err);
@@ -456,6 +478,7 @@ export const useSoundFontManager = () => {
     stopAllNotes,
     mute,
     unmute,
-    toggleMute
+    toggleMute,
+    programChange
   };
 };
