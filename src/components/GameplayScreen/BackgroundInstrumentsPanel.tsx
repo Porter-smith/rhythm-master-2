@@ -17,6 +17,7 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
   const [mutedChannels, setMutedChannels] = useState<Set<number>>(new Set());
   const [channelInstruments, setChannelInstruments] = useState<Map<number, number>>(new Map());
   const [showOnlyUsedChannels, setShowOnlyUsedChannels] = useState(true);
+  const [debugShowHiddenChannel, setDebugShowHiddenChannel] = useState(false);
 
   // Update voice list and instrument data periodically
   useEffect(() => {
@@ -55,13 +56,26 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
     console.log(`🔇 Toggled mute for channel ${channelNum + 1}: ${!isMuted ? 'muted' : 'unmuted'}`);
   };
 
+  // Handle debug toggle for hidden channel
+  const toggleDebugHiddenChannel = () => {
+    const newState = !debugShowHiddenChannel;
+    setDebugShowHiddenChannel(newState);
+    
+    if (hideSelectedChannel !== undefined) {
+      // If showing hidden channel, unmute it; if hiding, mute it
+      backgroundAudioManager.muteChannel(hideSelectedChannel, !newState);
+      console.log(`🔧 Debug toggle: ${newState ? 'Showing' : 'Hiding'} your instrument channel ${hideSelectedChannel + 1}`);
+    }
+  };
+
   // Debug: Log current state
   console.log('🎼 BackgroundInstrumentsPanel render:', {
     hideSelectedChannel,
     voiceListLength: voiceList.length,
     channelInstrumentsSize: channelInstruments.size,
     mutedChannelsSize: mutedChannels.size,
-    showOnlyUsedChannels
+    showOnlyUsedChannels,
+    debugShowHiddenChannel
   });
 
   return (
@@ -101,7 +115,7 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
       {/* Debug Information */}
       <div className="bg-gray-900/50 border border-gray-500/50 rounded-lg p-4">
         <h3 className="text-gray-300 font-bold mb-2">🔍 Debug Information</h3>
-        <div className="text-gray-400 text-sm space-y-1">
+        <div className="text-gray-400 text-sm space-y-1 mb-4">
           <div>Voice List Length: {voiceList.length}</div>
           <div>Channel Instruments: {channelInstruments.size}</div>
           <div>Muted Channels: {mutedChannels.size}</div>
@@ -110,6 +124,26 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
             `Ch${ch + 1}:${prog}`
           ).join(', ') || 'None detected'}</div>
         </div>
+        
+        {/* Debug Toggle for Hidden Channel */}
+        {hideSelectedChannel !== undefined && (
+          <div className="border-t border-gray-600 pt-3">
+            <label className="flex items-center space-x-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={debugShowHiddenChannel}
+                onChange={toggleDebugHiddenChannel}
+                className="w-4 h-4 text-yellow-600 bg-gray-700 border-gray-600 rounded focus:ring-yellow-500 focus:ring-2"
+              />
+              <div className="text-yellow-300 text-sm">
+                <strong>🔧 Debug: Show Your Instrument Channel</strong>
+                <div className="text-yellow-200 text-xs mt-1">
+                  Toggle to hear your instrument (Channel {hideSelectedChannel + 1}) playing with background
+                </div>
+              </div>
+            </label>
+          </div>
+        )}
       </div>
 
       {/* Instruments List */}
@@ -140,8 +174,12 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
               const instrument = channelInstruments.get(channelNum);
               const voiceText = voiceList[channelNum] || `Channel ${channelNum + 1}:\nUnknown\n`;
               
-              // Hide selected channel
-              if (hideSelectedChannel === channelNum) {
+              // Check if this is the hidden channel and debug mode
+              const isHiddenChannel = hideSelectedChannel === channelNum;
+              const shouldShowHiddenChannel = isHiddenChannel && debugShowHiddenChannel;
+              
+              // Hide selected channel unless debug mode is on
+              if (isHiddenChannel && !debugShowHiddenChannel) {
                 return null;
               }
               
@@ -171,18 +209,29 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
               return (
                 <div key={channelNum} className={`bg-white/5 rounded-lg p-4 border transition-all duration-200 ${
                   isActive ? 'border-green-400/50 bg-green-400/10' : 'border-white/10'
-                } ${mutedChannels.has(channelNum) ? 'opacity-50' : ''}`}>
+                } ${mutedChannels.has(channelNum) ? 'opacity-50' : ''} ${
+                  shouldShowHiddenChannel ? 'ring-2 ring-yellow-400 bg-yellow-400/10' : ''
+                }`}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center space-x-3">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-200 ${
                         isActive 
                           ? 'bg-green-500 text-white animate-pulse' 
+                          : shouldShowHiddenChannel
+                          ? 'bg-yellow-500 text-black'
                           : 'bg-blue-500/20 text-blue-400'
                       }`}>
                         {channelNum + 1}
                       </div>
                       <div>
-                        <div className="text-white font-medium">{instrumentLine}</div>
+                        <div className="text-white font-medium flex items-center space-x-2">
+                          <span>{instrumentLine}</span>
+                          {shouldShowHiddenChannel && (
+                            <span className="text-yellow-300 text-xs font-bold bg-yellow-900/50 px-2 py-1 rounded">
+                              YOUR INSTRUMENT (DEBUG)
+                            </span>
+                          )}
+                        </div>
                         <div className="text-white/60 text-sm">
                           {channelLine} • Program {instrument || 0}
                         </div>
@@ -221,6 +270,7 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
                     }`}>
                       {isActive ? `Playing ${playingNotes.length} note${playingNotes.length !== 1 ? 's' : ''}` : 'Inactive'}
                       {mutedChannels.has(channelNum) && ' (Muted)'}
+                      {shouldShowHiddenChannel && ' (Debug Mode)'}
                     </span>
                   </div>
                   
@@ -251,7 +301,7 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
           <div className="mt-4 pt-4 border-t border-white/10">
             <div className="text-sm text-white/60">
               Used Channels: {Array.from({ length: 16 }).filter((_, index) => {
-                if (hideSelectedChannel === index) return false;
+                if (hideSelectedChannel === index && !debugShowHiddenChannel) return false;
                 const instrument = channelInstruments.get(index);
                 const voiceText = voiceList[index] || '';
                 const isActive = voiceText.includes('note:');
@@ -262,8 +312,11 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
                 const noteMatches = text.match(/note:/g);
                 return sum + (noteMatches ? noteMatches.length : 0);
               }, 0)}
-              {hideSelectedChannel !== undefined && (
+              {hideSelectedChannel !== undefined && !debugShowHiddenChannel && (
                 <> • Hidden: Channel {hideSelectedChannel + 1} (Your Instrument)</>
+              )}
+              {hideSelectedChannel !== undefined && debugShowHiddenChannel && (
+                <> • Debug: Showing Channel {hideSelectedChannel + 1} (Your Instrument)</>
               )}
             </div>
           </div>
