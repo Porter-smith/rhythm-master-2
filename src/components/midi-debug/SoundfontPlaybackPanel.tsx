@@ -3,12 +3,22 @@ import { loadSoundFont, MIDI, SpessaSynthProcessor, SpessaSynthSequencer } from 
 import { Play, Pause, Square, Music, Volume2, AlertCircle, CheckCircle, Piano, VolumeX } from 'lucide-react';
 import { getMidiInstrumentName, getInstrumentName, getInstrumentGroup } from '../../utils/midiParser';
 
-export const SoundfontPlaybackPanel = () => {
+interface SoundfontPlaybackPanelProps {
+  hideSelectedChannel?: number;
+  autoLoadMidi?: ArrayBuffer | null;
+  gameMode?: boolean;
+}
+
+export const SoundfontPlaybackPanel: React.FC<SoundfontPlaybackPanelProps> = ({ 
+  hideSelectedChannel, 
+  autoLoadMidi,
+  gameMode = false 
+}) => {
   const [voiceList, setVoiceList] = useState<string[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [sequencerReady, setSequencerReady] = useState(false);
   const [channelInstruments, setChannelInstruments] = useState<Map<number, number>>(new Map());
-  const [message, setMessage] = useState('Please upload a soundfont to begin.');
+  const [message, setMessage] = useState(gameMode ? 'SoundFont ready for background instruments.' : 'Please upload a soundfont to begin.');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showOnlyUsedChannels, setShowOnlyUsedChannels] = useState(true);
@@ -26,6 +36,14 @@ export const SoundfontPlaybackPanel = () => {
     }
     setVoiceList(initialVoiceList);
   }, []);
+
+  // Auto-load MIDI if provided (for game mode)
+  useEffect(() => {
+    if (autoLoadMidi && sequencerReady) {
+      console.log('🎼 Auto-loading MIDI for background instruments...');
+      handleMidiFromArrayBuffer(autoLoadMidi);
+    }
+  }, [autoLoadMidi, sequencerReady]);
 
   // Update voice list when toggle changes to ensure instrument names are preserved
   useEffect(() => {
@@ -123,21 +141,20 @@ export const SoundfontPlaybackPanel = () => {
     }
   };
 
-  const handleMidiUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target?.files?.[0] || !seqRef.current) {
+  const handleMidiFromArrayBuffer = async (arrayBuffer: ArrayBuffer) => {
+    if (!seqRef.current) {
+      console.warn('⚠️ Sequencer not ready for MIDI loading');
       return;
     }
 
     try {
       setMessage('Loading MIDI file...');
       
-      const file = e.target.files[0];
-      const midi = new MIDI(await file.arrayBuffer());
+      const midi = new MIDI(arrayBuffer);
       seqRef.current.loadNewSongList([midi]);
       
       // Parse MIDI to get instrument information
-      const midiBuffer = await file.arrayBuffer();
-      const data = new Uint8Array(midiBuffer);
+      const data = new Uint8Array(arrayBuffer);
       let pos = 0;
 
       // Helper functions for reading binary data
@@ -223,7 +240,7 @@ export const SoundfontPlaybackPanel = () => {
       }
 
       setChannelInstruments(instruments);
-      setMessage(`Now playing: ${file.name}`);
+      setMessage(gameMode ? 'Background instruments loaded and ready!' : `Now playing: MIDI file`);
       
       // Immediately populate voice list with instrument names
       const newVoiceList: string[] = [];
@@ -243,14 +260,33 @@ export const SoundfontPlaybackPanel = () => {
       console.log('🎹 Parsed instruments:', Array.from(instruments.entries()).map(([ch, prog]) => 
         `Channel ${ch + 1}: ${getMidiInstrumentName(prog, ch)}`
       ));
+
+      // Auto-start in game mode
+      if (gameMode) {
+        setTimeout(() => {
+          togglePlayPause();
+        }, 1000);
+      }
     } catch (error) {
       console.error('Error parsing MIDI instruments:', error);
       setMessage('Error loading MIDI file. Please try again.');
     }
 
     // Song automatically plays, so we need to pause it
-    seqRef.current.pause();
-    setIsPlaying(false);
+    if (!gameMode) {
+      seqRef.current.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  const handleMidiUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target?.files?.[0] || !seqRef.current) {
+      return;
+    }
+
+    const file = e.target.files[0];
+    const arrayBuffer = await file.arrayBuffer();
+    await handleMidiFromArrayBuffer(arrayBuffer);
   };
 
   const togglePlayPause = () => {
@@ -357,61 +393,65 @@ export const SoundfontPlaybackPanel = () => {
 
   return (
     <div className="space-y-6">
-      {/* SoundFont Upload */}
-      <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
-          <Volume2 className="w-5 h-5 text-blue-400" />
-          <span>SoundFont Upload</span>
-        </h2>
-        
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="soundfont_input" className="block text-sm font-medium text-white/70 mb-2">
-              Upload SoundFont:
-            </label>
-            <input 
-              accept=".sf2, .sf3, .dls" 
-              id="soundfont_input" 
-              type="file" 
-              onChange={handleSoundfontUpload}
-              disabled={isLoading}
-              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-            />
-          </div>
+      {/* SoundFont Upload - Hide in game mode */}
+      {!gameMode && (
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
+            <Volume2 className="w-5 h-5 text-blue-400" />
+            <span>SoundFont Upload</span>
+          </h2>
           
-          <div className="text-sm text-white/60">
-            Supported formats: .sf2, .sf3, .dls
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="soundfont_input" className="block text-sm font-medium text-white/70 mb-2">
+                Upload SoundFont:
+              </label>
+              <input 
+                accept=".sf2, .sf3, .dls" 
+                id="soundfont_input" 
+                type="file" 
+                onChange={handleSoundfontUpload}
+                disabled={isLoading}
+                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
+            
+            <div className="text-sm text-white/60">
+              Supported formats: .sf2, .sf3, .dls
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* MIDI File Upload */}
-      <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
-        <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
-          <Music className="w-5 h-5 text-purple-400" />
-          <span>MIDI File Upload</span>
-        </h2>
-        
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="midi_input" className="block text-sm font-medium text-white/70 mb-2">
-              Upload MIDI File:
-            </label>
-            <input 
-              accept=".midi, .mid, .rmi, .smf" 
-              id="midi_input" 
-              type="file" 
-              onChange={handleMidiUpload}
-              disabled={!sequencerReady}
-              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-            />
-          </div>
+      {/* MIDI File Upload - Hide in game mode */}
+      {!gameMode && (
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center space-x-2">
+            <Music className="w-5 h-5 text-purple-400" />
+            <span>MIDI File Upload</span>
+          </h2>
           
-          <div className="text-sm text-white/60">
-            Supported formats: .mid, .midi, .rmi, .smf
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="midi_input" className="block text-sm font-medium text-white/70 mb-2">
+                Upload MIDI File:
+              </label>
+              <input 
+                accept=".midi, .mid, .rmi, .smf" 
+                id="midi_input" 
+                type="file" 
+                onChange={handleMidiUpload}
+                disabled={!sequencerReady}
+                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
+            
+            <div className="text-sm text-white/60">
+              Supported formats: .mid, .midi, .rmi, .smf
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Status Message */}
       <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20">
@@ -434,6 +474,14 @@ export const SoundfontPlaybackPanel = () => {
           <p className="text-red-400 text-sm mt-2">
             Error: {error}
           </p>
+        )}
+
+        {gameMode && hideSelectedChannel !== undefined && (
+          <div className="mt-4 p-3 bg-yellow-900/50 border border-yellow-500/50 rounded-lg">
+            <p className="text-yellow-200 text-sm">
+              <strong>🎮 Game Mode:</strong> Your selected instrument (Channel {hideSelectedChannel + 1}) is hidden from the list below since you're playing it manually.
+            </p>
+          </div>
         )}
       </div>
 
@@ -479,7 +527,7 @@ export const SoundfontPlaybackPanel = () => {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-white flex items-center space-x-2">
               <Piano className="w-5 h-5 text-green-400" />
-              <span>Instruments & Voices</span>
+              <span>{gameMode ? 'Background Instruments' : 'Instruments & Voices'}</span>
             </h2>
             
             <div className="flex items-center space-x-3">
@@ -500,6 +548,11 @@ export const SoundfontPlaybackPanel = () => {
               const channelNum = index;
               const instrument = channelInstruments.get(channelNum);
               const voiceText = voiceList[channelNum] || `Channel ${channelNum + 1}:\nUnknown\n`;
+              
+              // Hide selected channel in game mode
+              if (gameMode && hideSelectedChannel === channelNum) {
+                return null;
+              }
               
               // Parse the voice text to extract information
               const lines = voiceText.split('\n').filter(line => line.trim());
@@ -618,6 +671,7 @@ export const SoundfontPlaybackPanel = () => {
               {showOnlyUsedChannels ? (
                 <>
                   Used Channels: {Array.from({ length: 16 }).filter((_, index) => {
+                    if (gameMode && hideSelectedChannel === index) return false;
                     const instrument = channelInstruments.get(index);
                     const voiceText = voiceList[index] || '';
                     const isActive = voiceText.includes('note:');
@@ -626,7 +680,7 @@ export const SoundfontPlaybackPanel = () => {
                 </>
               ) : (
                 <>
-                  Total Channels: 16 • 
+                  Total Channels: {gameMode && hideSelectedChannel !== undefined ? '15' : '16'} • 
                 </>
               )}
               Active Channels: {voiceList.filter(text => text.includes('note:')).length} •
@@ -634,6 +688,9 @@ export const SoundfontPlaybackPanel = () => {
                 const noteMatches = text.match(/note:/g);
                 return sum + (noteMatches ? noteMatches.length : 0);
               }, 0)}
+              {gameMode && hideSelectedChannel !== undefined && (
+                <> • Hidden: Channel {hideSelectedChannel + 1} (Your Instrument)</>
+              )}
             </div>
           </div>
         </div>

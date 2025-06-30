@@ -4,10 +4,9 @@ import { Song, GameScore } from '../../types/game';
 import { AudioEngine } from '../../game/AudioEngine';
 import { GameEngine } from '../../game/GameEngine';
 import { MusicPlayer } from '../../music/MusicPlayer';
-import { BackgroundInstrumentManager } from '../../game/BackgroundInstrumentManager';
 import { LoadingScreen } from './LoadingScreen';
-import { BackgroundInstrumentPanel } from './BackgroundInstrumentPanel';
 import { useSoundFontManager } from './SoundFontManager';
+import { SoundfontPlaybackPanel } from '../midi-debug/SoundfontPlaybackPanel';
 
 interface GameplayScreenProps {
   song: Song;
@@ -53,7 +52,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gameEngineRef = useRef<GameEngine | null>(null);
-  const backgroundManagerRef = useRef<BackgroundInstrumentManager | null>(null);
   const animationFrameRef = useRef<number>();
   const musicPlayerRef = useRef<MusicPlayer | null>(null);
   const initializationRef = useRef<boolean>(false);
@@ -78,8 +76,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [filteredNotes, setFilteredNotes] = useState<FilteredNote[]>([]);
 
   // Background instruments state
-  const [backgroundInstruments, setBackgroundInstruments] = useState<any[]>([]);
   const [showBackgroundPanel, setShowBackgroundPanel] = useState(false);
+  const [midiFileForBackground, setMidiFileForBackground] = useState<ArrayBuffer | null>(null);
 
   // Debug information
   const debugInfo = {
@@ -89,7 +87,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     songNotes: loadedSong?.notes[difficulty] || [],
     audioOffset: audioOffset,
     gameEngine: gameEngineRef.current ? 'Initialized' : 'Not Initialized',
-    backgroundManager: backgroundManagerRef.current ? 'Initialized' : 'Not Initialized',
     songTitle: song.title,
     songArtist: song.artist,
     songBPM: song.bpm,
@@ -104,7 +101,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     samplerState: soundFontState.sampler ? 'Exists' : 'Null',
     samplerReady: soundFontState.isReady,
     soundFontLoading: soundFontState.isLoading,
-    backgroundInstruments: backgroundInstruments.length
+    backgroundPanelVisible: showBackgroundPanel,
+    midiFileLoaded: !!midiFileForBackground
   };
 
   // Initialize game with proper loading phases - ONLY RUN ONCE
@@ -168,6 +166,21 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             }
             
             console.log(`✅ MIDI ${difficulty} difficulty loaded successfully`);
+
+            // Load MIDI file for background instruments panel
+            const midiUrl = (song as any).midiFiles?.[difficulty];
+            if (midiUrl) {
+              try {
+                console.log(`📂 Loading MIDI file for background panel: ${midiUrl}`);
+                const response = await fetch(midiUrl);
+                const arrayBuffer = await response.arrayBuffer();
+                setMidiFileForBackground(arrayBuffer);
+                console.log(`✅ MIDI file loaded for background panel`);
+              } catch (midiError) {
+                console.warn(`⚠️ Failed to load MIDI file for background panel:`, midiError);
+              }
+            }
+            
           } catch (midiError) {
             console.warn(`⚠️ MIDI loading failed for ${difficulty}, using fallback notes:`, midiError);
             
@@ -218,27 +231,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         setLoadingState({
           phase: 'ready',
           message: 'Initializing game engine...',
-          progress: 80
+          progress: 90
         });
 
         const gameEngine = new GameEngine(finalSong, difficulty, audioOffset, audioEngine, selectedInstrument);
         gameEngineRef.current = gameEngine;
-
-        // Phase 5: Initialize Background Instrument Manager
-        setLoadingState({
-          phase: 'ready',
-          message: 'Setting up background instruments...',
-          progress: 90
-        });
-
-        const backgroundManager = new BackgroundInstrumentManager();
-        backgroundManager.initialize(finalSong, difficulty, selectedInstrument?.channel || null);
-        backgroundManagerRef.current = backgroundManager;
-
-        // Get background instruments for UI
-        const bgInstruments = backgroundManager.getBackgroundInstruments();
-        setBackgroundInstruments(bgInstruments);
-        console.log(`🎼 Background instruments available: ${bgInstruments.length}`);
 
         setLoadingState({
           phase: 'ready',
@@ -247,7 +244,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         });
 
         console.log('✅ GameEngine initialized successfully');
-        console.log('✅ BackgroundInstrumentManager initialized successfully');
         console.log('🎮 ===== INITIALIZATION COMPLETE =====\n');
 
         // Move to countdown phase after a brief delay
@@ -275,9 +271,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       if (gameEngineRef.current) {
         gameEngineRef.current.destroy();
       }
-      if (backgroundManagerRef.current) {
-        backgroundManagerRef.current.destroy();
-      }
       if (soundFontState.sampler) {
         soundFontState.sampler.disconnect();
       }
@@ -295,13 +288,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       });
       gameEngineRef.current.setSoundFontCallback(playNote);
     }
-
-    // Also set callback for background manager
-    if (backgroundManagerRef.current && soundFontState.isReady) {
-      console.log('🎼 Setting SoundFont callback for background instruments');
-      backgroundManagerRef.current.setSoundFontCallback(playNote);
-    }
-  }, [gameEngineRef.current, backgroundManagerRef.current, soundFontState.isReady, playNote]);
+  }, [gameEngineRef.current, soundFontState.isReady, playNote]);
 
   // Countdown logic
   useEffect(() => {
@@ -315,18 +302,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             console.log('🎹 Final SoundFont callback setup before game start');
             gameEngineRef.current.setSoundFontCallback(playNote);
           }
-
-          if (backgroundManagerRef.current && soundFontState.isReady) {
-            console.log('🎼 Final background SoundFont callback setup before game start');
-            backgroundManagerRef.current.setSoundFontCallback(playNote);
-          }
           
-          const gameStartTime = performance.now();
           gameEngineRef.current?.start();
-          backgroundManagerRef.current?.start(gameStartTime);
-          
           console.log('🎮 Game started with SoundFont support!');
-          console.log('🎼 Background instruments started!');
           console.log(`🔍 Final SoundFont check at game start:`, {
             samplerExists: !!soundFontState.sampler,
             isReady: soundFontState.isReady,
@@ -354,17 +332,16 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       if (gameState === 'playing') {
         setGameState('paused');
         gameEngineRef.current?.pause();
-        backgroundManagerRef.current?.pause();
       } else if (gameState === 'paused') {
         setGameState('playing');
         gameEngineRef.current?.resume();
-        backgroundManagerRef.current?.resume();
       }
     } else if (event.code === 'F12' || (event.ctrlKey && event.shiftKey && event.code === 'KeyD')) {
       event.preventDefault();
       setShowDebug(!showDebug);
     } else if (event.code === 'KeyB' && gameState === 'playing') {
       // Toggle background instruments panel with 'B' key
+      event.preventDefault();
       setShowBackgroundPanel(!showBackgroundPanel);
     }
   }, [gameState, showDebug, showBackgroundPanel]);
@@ -385,15 +362,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const currentTime = performance.now();
-
       // Update game state
-      const currentState = gameEngineRef.current.update(currentTime);
-      
-      // Update background instruments
-      if (backgroundManagerRef.current) {
-        backgroundManagerRef.current.update((currentTime - gameEngineRef.current['startTime']) / 1000);
-      }
+      const currentState = gameEngineRef.current.update(performance.now());
       
       // Update filtered notes from game engine state
       setFilteredNotes(currentState.notes);
@@ -408,10 +378,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           grade: calculateGrade(currentState.accuracy)
         };
         console.log('🎉 Game complete! Final score:', finalScore);
-        
-        // Stop background instruments
-        backgroundManagerRef.current?.stop();
-        
         onGameComplete(finalScore);
         return;
       }
@@ -523,12 +489,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     }
 
     // Background instruments indicator
-    if (backgroundInstruments.length > 0) {
-      const activeCount = backgroundInstruments.filter(i => i.isEnabled && !i.isMuted).length;
+    if (midiFileForBackground) {
       ctx.fillStyle = '#ff8800';
       ctx.font = '14px Arial';
       ctx.textAlign = 'left';
-      ctx.fillText(`🎼 Background: ${activeCount}/${backgroundInstruments.length} active`, 20, height - 40);
+      ctx.fillText(`🎼 Background Instruments Available (Press B)`, 20, height - 40);
     }
   };
 
@@ -547,11 +512,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     if (gameState === 'playing') {
       setGameState('paused');
       gameEngineRef.current?.pause();
-      backgroundManagerRef.current?.pause();
     } else if (gameState === 'paused') {
       setGameState('playing');
       gameEngineRef.current?.resume();
-      backgroundManagerRef.current?.resume();
     }
   };
 
@@ -571,43 +534,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       setFilteredNotes(currentState.notes);
     }
   }, [gameState]);
-
-  // Background instrument handlers
-  const handleToggleInstrumentMute = (channel: number) => {
-    backgroundManagerRef.current?.toggleInstrumentMute(channel);
-    // Update local state
-    setBackgroundInstruments(prev => 
-      prev.map(inst => 
-        inst.channel === channel 
-          ? { ...inst, isMuted: !inst.isMuted }
-          : inst
-      )
-    );
-  };
-
-  const handleInstrumentVolumeChange = (channel: number, volume: number) => {
-    backgroundManagerRef.current?.setInstrumentVolume(channel, volume);
-    // Update local state
-    setBackgroundInstruments(prev => 
-      prev.map(inst => 
-        inst.channel === channel 
-          ? { ...inst, volume }
-          : inst
-      )
-    );
-  };
-
-  const handleToggleInstrumentEnabled = (channel: number, enabled: boolean) => {
-    backgroundManagerRef.current?.setInstrumentEnabled(channel, enabled);
-    // Update local state
-    setBackgroundInstruments(prev => 
-      prev.map(inst => 
-        inst.channel === channel 
-          ? { ...inst, isEnabled: enabled }
-          : inst
-      )
-    );
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black">
@@ -642,8 +568,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           {soundFontState.isReady && (
             <p className="text-green-400 text-sm">🎹 {soundFontState.selectedSoundFont} Ready</p>
           )}
-          {backgroundInstruments.length > 0 && (
-            <p className="text-orange-400 text-sm">🎼 {backgroundInstruments.length} Background Instruments</p>
+          {midiFileForBackground && (
+            <p className="text-orange-400 text-sm">🎼 Background Instruments Available</p>
           )}
         </div>
 
@@ -670,15 +596,55 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         <LoadingScreen loadingState={loadingState} onBack={handleBack} />
       )}
 
-      {/* Background Instruments Panel */}
-      <BackgroundInstrumentPanel
-        instruments={backgroundInstruments}
-        onToggleMute={handleToggleInstrumentMute}
-        onVolumeChange={handleInstrumentVolumeChange}
-        onToggleEnabled={handleToggleInstrumentEnabled}
-        isVisible={showBackgroundPanel}
-        onToggleVisibility={() => setShowBackgroundPanel(!showBackgroundPanel)}
-      />
+      {/* Background Instruments Panel - Using existing SoundfontPlaybackPanel */}
+      {showBackgroundPanel && midiFileForBackground && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 overflow-y-auto">
+          <div className="min-h-screen p-8">
+            {/* Panel Header */}
+            <div className="flex items-center justify-between mb-8">
+              <button
+                onClick={() => setShowBackgroundPanel(false)}
+                className="flex items-center space-x-2 text-white/70 hover:text-white transition-colors duration-200 group"
+              >
+                <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform duration-200" />
+                <span>Back to Game</span>
+              </button>
+              
+              <h1 className="text-4xl font-bold text-white text-center flex-1">
+                🎼 Background Instruments
+              </h1>
+              
+              <div className="w-24"></div>
+            </div>
+
+            {/* Instructions */}
+            <div className="max-w-4xl mx-auto mb-8">
+              <div className="bg-blue-900/50 border border-blue-500/50 rounded-lg p-4">
+                <h3 className="text-blue-300 font-bold mb-2">🎵 Background Instruments Control</h3>
+                <p className="text-blue-200 text-sm mb-2">
+                  This panel shows all instruments from the MIDI file. Your selected instrument 
+                  <strong className="text-yellow-300"> (Channel {selectedInstrument ? selectedInstrument.channel + 1 : 'N/A'}) </strong> 
+                  is hidden from this list since you're playing it manually.
+                </p>
+                <p className="text-blue-200 text-sm">
+                  • <strong>Upload the same MIDI file</strong> to see all background instruments<br/>
+                  • <strong>Mute/unmute</strong> individual channels to customize your backing track<br/>
+                  • <strong>Play/pause</strong> to hear the full arrangement while you practice
+                </p>
+              </div>
+            </div>
+
+            {/* SoundFont Playback Panel */}
+            <div className="max-w-7xl mx-auto">
+              <SoundfontPlaybackPanel 
+                hideSelectedChannel={selectedInstrument?.channel}
+                autoLoadMidi={midiFileForBackground}
+                gameMode={true}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Debug Panel */}
       {showDebug && (
@@ -701,10 +667,12 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             <div><span className="text-blue-300">Sampler State:</span> {debugInfo.samplerState}</div>
             <div><span className="text-blue-300">Sampler Ready:</span> {debugInfo.samplerReady ? 'Yes' : 'No'}</div>
             <div><span className="text-blue-300">SoundFont Loading:</span> {debugInfo.soundFontLoading ? 'Yes' : 'No'}</div>
-            <div className={`${debugInfo.backgroundManager === 'Initialized' ? 'text-green-400' : 'text-red-400'}`}>
-              <span className="text-blue-300">Background Manager:</span> {debugInfo.backgroundManager}
+            <div className={`${debugInfo.backgroundPanelVisible ? 'text-green-400' : 'text-gray-400'}`}>
+              <span className="text-blue-300">Background Panel:</span> {debugInfo.backgroundPanelVisible ? 'Visible' : 'Hidden'}
             </div>
-            <div><span className="text-blue-300">Background Instruments:</span> {debugInfo.backgroundInstruments}</div>
+            <div className={`${debugInfo.midiFileLoaded ? 'text-green-400' : 'text-red-400'}`}>
+              <span className="text-blue-300">MIDI for Background:</span> {debugInfo.midiFileLoaded ? 'Loaded' : 'Not Loaded'}
+            </div>
           </div>
         </div>
       )}
@@ -728,8 +696,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           {soundFontState.isReady && (
             <div className="text-xs text-green-400">🎹 SoundFont Active</div>
           )}
-          {backgroundInstruments.length > 0 && (
-            <div className="text-xs text-orange-400">🎼 {backgroundInstruments.filter(i => i.isEnabled && !i.isMuted).length} BG Active</div>
+          {midiFileForBackground && (
+            <div className="text-xs text-orange-400">🎼 Background Available</div>
           )}
         </div>
       </div>
@@ -744,8 +712,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             {soundFontState.isReady && (
               <p className="text-green-400 text-xl">🎹 {soundFontState.selectedSoundFont} Ready!</p>
             )}
-            {backgroundInstruments.length > 0 && (
-              <p className="text-orange-400 text-lg">🎼 {backgroundInstruments.length} Background Instruments Ready!</p>
+            {midiFileForBackground && (
+              <p className="text-orange-400 text-lg">🎼 Background Instruments Ready!</p>
             )}
           </div>
         </div>
@@ -761,7 +729,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             {soundFontState.isReady && (
               <p className="text-green-400 mt-2">🎹 {soundFontState.selectedSoundFont} Ready</p>
             )}
-            {backgroundInstruments.length > 0 && (
+            {midiFileForBackground && (
               <p className="text-orange-400 mt-1">🎼 Background Instruments Paused</p>
             )}
           </div>
@@ -774,8 +742,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         {soundFontState.isReady && (
           <p className="text-green-400">🎵 Professional audio with {soundFontState.selectedSoundFont} SoundFont</p>
         )}
-        {backgroundInstruments.length > 0 && (
-          <p className="text-orange-400">🎼 {backgroundInstruments.length} background instruments available</p>
+        {midiFileForBackground && (
+          <p className="text-orange-400">🎼 Background instruments available - Press B to control</p>
         )}
       </div>
     </div>
