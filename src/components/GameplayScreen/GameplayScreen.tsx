@@ -104,7 +104,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     songArtist: song.artist,
     songBPM: song.bpm,
     songDuration: song.duration,
-    songSoundFont: (song as any).soundFont || 'None (using default)',
+    songSoundFont: (song as Song & { soundFont?: string }).soundFont || 'None (using default)',
     loadingPhase: loadingState.phase,
     originalSong: song,
     loadedSong: loadedSong,
@@ -156,7 +156,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             ...song,
             difficulties: [difficulty], // Only load the selected difficulty
             midiFiles: {
-              [difficulty]: (song as any).midiFiles?.[difficulty]
+              [difficulty]: (song as Song & { midiFiles?: Record<string, string> }).midiFiles?.[difficulty]
             }
           };
           
@@ -167,7 +167,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             }
 
             console.log(`🎯 Loading only ${difficulty} difficulty to avoid loading all files`);
-            await musicPlayerRef.current.loadSong(singleDifficultySong as any);
+            await musicPlayerRef.current.loadSong(singleDifficultySong as Song & { midiFiles?: Record<string, string> });
             
             // Copy the loaded notes back to the original song
             if (singleDifficultySong.notes[difficulty]) {
@@ -178,7 +178,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
             // Load MIDI file for background instruments
             console.log("LOADINMG THIS THLOADING THIS TIHNGK ")
-            const midiUrl = (song as any).midiFiles?.[difficulty];
+            const midiUrl = (song as Song & { midiFiles?: Record<string, string> }).midiFiles?.[difficulty];
             if (midiUrl) {
               try {
                 console.log(`📂 Loading MIDI file for background audio: ${midiUrl}`);
@@ -220,11 +220,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         // Phase 3: Load SoundFont
         setLoadingState({
           phase: 'loading-soundfont',
-          message: (song as any).soundFont ? `Loading ${(song as any).soundFont.includes('gzdoom') ? 'GZDoom' : 'Custom'} SoundFont...` : 'Loading Piano SoundFont...',
+          message: (song as Song & { soundFont?: string }).soundFont ? `Loading ${(song as Song & { soundFont?: string }).soundFont.includes('gzdoom') ? 'GZDoom' : 'Custom'} SoundFont...` : 'Loading Piano SoundFont...',
           progress: 60
         });
 
-        const soundFontSuccess = await loadSongSoundFont(finalSong as any, selectedInstrument);
+        const soundFontSuccess = await loadSongSoundFont(finalSong as Song & { soundFont?: string }, selectedInstrument);
         
         if (!soundFontSuccess) {
           console.error('❌ SoundFont loading failed - cannot continue');
@@ -565,183 +565,93 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, width, height);
 
-    // Draw staff lines
-    const staffY = height * 0.3;
-    const staffHeight = height * 0.4;
-    const lineSpacing = staffHeight / 8;
+    // Staff parameters (matching POC)
+    const STAFF_HEIGHT = 200;
+    const STAFF_TOP_MARGIN = 100;
+    const LINE_SPACING = STAFF_HEIGHT / 6;
 
+    // Draw staff lines
     ctx.strokeStyle = '#ffffff40';
     ctx.lineWidth = 1;
-
+    
     // Treble staff
     for (let i = 0; i < 5; i++) {
-      const y = staffY + i * lineSpacing;
+      const y = STAFF_TOP_MARGIN + i * LINE_SPACING;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(width, y);
       ctx.stroke();
     }
-
+    
     // Bass staff
     for (let i = 0; i < 5; i++) {
-      const y = staffY + staffHeight * 0.6 + i * lineSpacing;
+      const y = STAFF_TOP_MARGIN + STAFF_HEIGHT + i * LINE_SPACING;
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(width, y);
       ctx.stroke();
     }
-
-    // Draw piano keyboard at bottom (like the Python version)
-    const keyboardY = height - 150;
-    const keyboardHeight = 120;
-    const whiteKeyWidth = 40;
-    const blackKeyWidth = 28;
-    const blackKeyHeight = 80;
-    
-    // Define the keyboard layout (one octave)
-    const whiteKeys = [
-      { note: 60, label: 'C', key: 'Z' },   // C4
-      { note: 62, label: 'D', key: 'X' },   // D4
-      { note: 64, label: 'E', key: 'C' },   // E4
-      { note: 65, label: 'F', key: 'V' },   // F4
-      { note: 67, label: 'G', key: 'B' },   // G4
-      { note: 69, label: 'A', key: 'N' },   // A4
-      { note: 71, label: 'B', key: 'M' },   // B4
-    ];
-    
-    const blackKeys = [
-      { note: 61, label: 'C#', key: 'S', position: 0.7 },  // C#4
-      { note: 63, label: 'D#', key: 'D', position: 1.7 },  // D#4
-      { note: 66, label: 'F#', key: 'F', position: 3.7 },  // F#4
-      { note: 68, label: 'G#', key: 'G', position: 4.7 },  // G#4
-      { note: 70, label: 'A#', key: 'H', position: 5.7 },  // A#4
-    ];
-
-    // Draw white keys
-    whiteKeys.forEach((keyInfo, i) => {
-      const x = 50 + i * whiteKeyWidth;
-      const isPressed = pressedKeys.has(keyInfo.note);
-      
-      // Key background
-      ctx.fillStyle = isPressed ? '#4169E1' : '#ffffff';
-      ctx.fillRect(x, keyboardY, whiteKeyWidth - 1, keyboardHeight);
-      
-      // Key border
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x, keyboardY, whiteKeyWidth - 1, keyboardHeight);
-      
-      // Key labels
-      ctx.fillStyle = isPressed ? '#ffffff' : '#000000';
-      ctx.font = '14px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(keyInfo.key, x + whiteKeyWidth/2, keyboardY + keyboardHeight - 30);
-      ctx.fillText(keyInfo.label, x + whiteKeyWidth/2, keyboardY + keyboardHeight - 10);
-    });
-
-    // Draw black keys (on top of white keys)
-    blackKeys.forEach((keyInfo) => {
-      const x = 50 + keyInfo.position * whiteKeyWidth - blackKeyWidth/2;
-      const isPressed = pressedKeys.has(keyInfo.note);
-      
-      // Key background
-      ctx.fillStyle = isPressed ? '#4169E1' : '#000000';
-      ctx.fillRect(x, keyboardY, blackKeyWidth, blackKeyHeight);
-      
-      // Key border
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x, keyboardY, blackKeyWidth, blackKeyHeight);
-      
-      // Key labels
-      ctx.fillStyle = isPressed ? '#ffffff' : '#ffffff';
-      ctx.font = '12px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(keyInfo.key, x + blackKeyWidth/2, keyboardY + blackKeyHeight - 25);
-      ctx.fillText(keyInfo.label, x + blackKeyWidth/2, keyboardY + blackKeyHeight - 10);
-    });
-
-    // Draw upper octave keys (Q-U row) - smaller keys above
-    const upperOctaveY = keyboardY - 60;
-    const upperKeys = [
-      { note: 72, label: 'C', key: 'Q' },   // C5
-      { note: 74, label: 'D', key: 'W' },   // D5
-      { note: 76, label: 'E', key: 'E' },   // E5
-      { note: 77, label: 'F', key: 'R' },   // F5
-      { note: 79, label: 'G', key: 'T' },   // G5
-      { note: 81, label: 'A', key: 'Y' },   // A5
-      { note: 83, label: 'B', key: 'U' },   // B5
-    ];
-
-    upperKeys.forEach((keyInfo, i) => {
-      const x = 50 + i * (whiteKeyWidth * 0.8);
-      const keyWidth = whiteKeyWidth * 0.7;
-      const keyHeight = 40;
-      const isPressed = pressedKeys.has(keyInfo.note);
-      
-      // Key background
-      ctx.fillStyle = isPressed ? '#4169E1' : '#e0e0e0';
-      ctx.fillRect(x, upperOctaveY, keyWidth, keyHeight);
-      
-      // Key border
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x, upperOctaveY, keyWidth, keyHeight);
-      
-      // Key labels
-      ctx.fillStyle = isPressed ? '#ffffff' : '#000000';
-      ctx.font = '10px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(keyInfo.key, x + keyWidth/2, upperOctaveY + keyHeight - 15);
-      ctx.fillText(keyInfo.label, x + keyWidth/2, upperOctaveY + keyHeight - 5);
-    });
 
     // Hit line (red line at 25% width)
     const hitLineX = width * 0.25;
+
+    // Draw vertical measure and beat lines, synchronized with note scroll
+    const gameTime = gameEngineRef.current ? (performance.now() - gameEngineRef.current.getStartTime()) / 1000 : 0;
+    const scrollSpeed = (song.bpm / 60) * LINE_SPACING * 2;
+    const secondsPerBeat = 60 / song.bpm;
+    const pixelsPerSecond = scrollSpeed;
+    
+    // The time at the hit line (where time = gameTime)
+    const timeAtHitLine = gameTime;
+    // The time at the left edge of the canvas
+    const timeAtLeftEdge = timeAtHitLine - (hitLineX / pixelsPerSecond);
+    
+    // For scale song, align grid with the first note at measure 2 (time 4)
+    // This ensures measure lines align with note starts
+    const gridOffset = 0; // Always align measure lines at 0, 4, 8, ...
+    const adjustedTimeAtLeftEdge = timeAtLeftEdge;
+    
+    // Draw enough lines to cover the canvas
+    const totalBeats = Math.ceil(width / (secondsPerBeat * pixelsPerSecond)) + 8;
+    
+    for (let i = 0; i < totalBeats; i++) {
+      // The time for this beat line (adjusted for grid offset)
+      const beatTime = Math.floor(adjustedTimeAtLeftEdge / secondsPerBeat) * secondsPerBeat + i * secondsPerBeat + gridOffset;
+      const x = hitLineX + (beatTime - timeAtHitLine) * pixelsPerSecond;
+      if (x < 0 || x > width) continue;
+      
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, height);
+      
+      if (Math.round(beatTime / secondsPerBeat) % 4 === 0) {
+        // Bold measure line
+        ctx.strokeStyle = '#ffffff70';
+        ctx.lineWidth = 3;
+      } else {
+        // Lighter beat line
+        ctx.strokeStyle = '#ffffff30';
+        ctx.lineWidth = 1;
+      }
+      ctx.stroke();
+    }
+
+    // Hit line (red line at 25% width)
     ctx.strokeStyle = '#ff0000';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(hitLineX, staffY);
-    ctx.lineTo(hitLineX, staffY + staffHeight);
+    ctx.moveTo(hitLineX, 0);
+    ctx.lineTo(hitLineX, height);
     ctx.stroke();
 
     // Hit window (semi-transparent area)
     ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.fillRect(hitLineX - 20, staffY, 40, staffHeight);
+    ctx.fillRect(hitLineX - 20, 0, 40, height);
 
-    // Show pressed keys on the hit line (like your Python version)
-    pressedKeys.forEach(pitch => {
-      const noteY = getNoteY(pitch, staffY, lineSpacing);
-      
-      // Draw a bright highlight box for the pressed key at the hit line
-      ctx.fillStyle = 'rgba(255, 255, 0, 0.8)'; // Bright yellow highlight
-      ctx.fillRect(hitLineX - 25, noteY - 8, 50, 16);
-      
-      // Draw border
-      ctx.strokeStyle = '#ffff00';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(hitLineX - 25, noteY - 8, 50, 16);
-      
-      // Add text to show which key is pressed
-      ctx.fillStyle = '#000000';
-      ctx.font = '12px Arial bold';
-      ctx.textAlign = 'center';
-      
-      // Get the keyboard key for this pitch
-      let keyLabel = '';
-      Object.entries(keyToPitch).forEach(([key, keyPitch]) => {
-        if (keyPitch === pitch) {
-          keyLabel = key.replace('Key', ''); // Remove 'Key' prefix (KeyZ -> Z)
-        }
-      });
-      
-      ctx.fillText(keyLabel, hitLineX, noteY + 4);
-    });
-
-    // Draw notes
+    // Draw notes as long rectangles (matching POC logic)
     filteredNotes.forEach((note: FilteredNote) => {
-      const noteX = hitLineX + ((note.timeToHit || 0) * 200);
-      const noteY = getNoteY(note.pitch, staffY, lineSpacing);
+      const isTreble = note.pitch >= 60 && note.pitch <= 84;
+      const y = noteToY(note.pitch, isTreble);
       
       // Note color based on state
       let color = '#4169E1';
@@ -750,17 +660,60 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       if (note.isMissed) color = '#FF0000';
       if (note.isActive) color = '#FFD700';
 
-      // Draw note
+      // Calculate note position and size (matching POC)
+      const pixelsPerSecond = scrollSpeed;
+      const secondsPerBeat = 60 / song.bpm;
+      const noteStartX = hitLineX + (note.time - gameTime) * pixelsPerSecond;
+      const noteWidth = note.duration * pixelsPerSecond;
+      const noteHeight = LINE_SPACING; // Fill exactly between staff lines
+      
       ctx.fillStyle = color;
-      ctx.fillRect(noteX - 20, noteY - 5, 40, 10);
-
+      ctx.fillRect(noteStartX, y - noteHeight / 2, noteWidth, noteHeight);
+      
       // Add sharp symbol if needed
       if (isSharpNote(note.pitch)) {
         ctx.fillStyle = '#ffffff';
-        ctx.font = '16px Arial';
-        ctx.fillText('#', noteX - 35, noteY + 5);
+        ctx.font = '18px Arial bold';
+        ctx.textAlign = 'right';
+        ctx.fillText('#', noteStartX - 6, y + 8);
+      }
+      
+      // Draw note name centered on the note
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(getNoteNameFromPitch(note.pitch), noteStartX + noteWidth / 2, y + 5);
+    });
+
+    // Show pressed keys on the hit line
+    pressedKeys.forEach(pitch => {
+      const isTreble = pitch >= 60 && pitch <= 84;
+      const y = noteToY(pitch, isTreble);
+      
+      // Draw a bright highlight box for the pressed key at the hit line
+      ctx.fillStyle = 'rgba(255, 255, 0, 0.8)'; // Bright yellow highlight
+      ctx.fillRect(hitLineX - 25, y - 8, 50, 16);
+      
+      // Draw border
+      ctx.strokeStyle = '#ffff00';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(hitLineX - 25, y - 8, 50, 16);
+      
+      // If sharp, show # next to the box
+      if (isSharpNote(pitch)) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '18px Arial bold';
+        ctx.textAlign = 'right';
+        ctx.fillText('#', hitLineX + 30, y + 8);
       }
     });
+
+    // Draw labels
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px Arial bold';
+    ctx.textAlign = 'left';
+    ctx.fillText('Treble', 20, STAFF_TOP_MARGIN + 2);
+    ctx.fillText('Bass', 20, STAFF_TOP_MARGIN + STAFF_HEIGHT + 2);
 
     // SoundFont indicator
     if (soundFontState.isReady) {
@@ -784,10 +737,58 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     }
   };
 
-  const getNoteY = (pitch: number, staffY: number, lineSpacing: number): number => {
-    const middleC = 60;
-    const noteOffset = pitch - middleC;
-    return staffY + (4 * lineSpacing) - (noteOffset * lineSpacing * 0.5);
+  // Updated note positioning function (matching POC)
+  const noteToY = (note: number, isTreble: boolean): number => {
+    const TREBLE_MIN = 60;
+    const TREBLE_MAX = 84;
+    const BASS_MIN = 36;
+    const BASS_MAX = 59;
+    
+    const TREBLE_NOTES: { [key: number]: string } = {
+      60: 'C4', 61: 'C#4', 62: 'D4', 63: 'D#4', 64: 'E4', 65: 'F4',
+      66: 'F#4', 67: 'G4', 68: 'G#4', 69: 'A4', 70: 'A#4', 71: 'B4',
+      72: 'C5', 73: 'C#5', 74: 'D5', 75: 'D#5', 76: 'E5', 77: 'F5',
+      78: 'F#5', 79: 'G5', 80: 'G#5', 81: 'A5', 82: 'A#5', 83: 'B5', 84: 'C6'
+    };
+
+    const BASS_NOTES: { [key: number]: string } = {
+      36: 'C2', 37: 'C#2', 38: 'D2', 39: 'D#2', 40: 'E2', 41: 'F2',
+      42: 'F#2', 43: 'G2', 44: 'G#2', 45: 'A2', 46: 'A#2', 47: 'B2',
+      48: 'C3', 49: 'C#3', 50: 'D3', 51: 'D#3', 52: 'E3', 53: 'F3',
+      54: 'F#3', 55: 'G3', 56: 'G#3', 57: 'A3', 58: 'A#3', 59: 'B3'
+    };
+
+    const STAFF_HEIGHT = 200;
+    const STAFF_TOP_MARGIN = 100;
+    const LINE_SPACING = STAFF_HEIGHT / 6;
+
+    if (isTreble) {
+      const noteName = TREBLE_NOTES[note] || 'E4';
+      const baseNote = 'E4';
+      const staffBottom = STAFF_TOP_MARGIN + 4 * LINE_SPACING;
+      
+      const noteLetter = noteName[0];
+      const noteOctave = parseInt(noteName.slice(-1));
+      const baseOctave = parseInt(baseNote.slice(-1));
+      
+      const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+      const semitones = (noteOrder.indexOf(noteLetter) - noteOrder.indexOf(baseNote[0])) + (noteOctave - baseOctave) * 7;
+      
+      return staffBottom - semitones * (LINE_SPACING / 2);
+    } else {
+      const noteName = BASS_NOTES[note] || 'G2';
+      const baseNote = 'G2';
+      const staffBottom = STAFF_TOP_MARGIN + STAFF_HEIGHT + 4 * LINE_SPACING;
+      
+      const noteLetter = noteName[0];
+      const noteOctave = parseInt(noteName.slice(-1));
+      const baseOctave = parseInt(baseNote.slice(-1));
+      
+      const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+      const semitones = (noteOrder.indexOf(noteLetter) - noteOrder.indexOf(baseNote[0])) + (noteOctave - baseOctave) * 7;
+      
+      return staffBottom - semitones * (LINE_SPACING / 2);
+    }
   };
 
   const isSharpNote = (pitch: number): boolean => {

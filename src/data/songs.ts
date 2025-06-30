@@ -73,16 +73,20 @@ export const customSongs: CustomSong[] = [
     artist: 'Exercise',
     duration: '0:40',
     difficulties: ['easy', 'medium', 'hard'],
-    bpm: 140,
+    bpm: 120,
     format: 'custom',
     soundFont: 'https://smpldsnds.github.io/soundfonts/soundfonts/yamaha-grand-lite.sf2',
     overallDifficulty: 4,
     notes: {
       easy: [
-        { time: 0.5, pitch: 60, duration: 0.5 },  // C
-        { time: 1.0, pitch: 62, duration: 0.5 },  // D
-        { time: 1.5, pitch: 64, duration: 0.5 },  // E
-        { time: 2.0, pitch: 65, duration: 0.5 },  // F
+        { time: 4, pitch: 60, duration: 4 },   // C4, measure 2
+        { time: 8, pitch: 62, duration: 4 },   // D4, measure 3
+        { time: 12, pitch: 64, duration: 4 },  // E4, measure 4
+        { time: 16, pitch: 65, duration: 4 },  // F4, measure 5
+        { time: 20, pitch: 67, duration: 4 },  // G4, measure 6
+        { time: 24, pitch: 69, duration: 4 },  // A4, measure 7
+        { time: 28, pitch: 71, duration: 4 },  // B4, measure 8
+        { time: 32, pitch: 72, duration: 4 },  // C5, measure 9
       ],
       medium: [
         { time: 0.25, pitch: 60, duration: 0.25 }, // C
