@@ -18,9 +18,9 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
   const [channelInstruments, setChannelInstruments] = useState<Map<number, number>>(new Map());
   const [showOnlyUsedChannels, setShowOnlyUsedChannels] = useState(true);
 
-  // Update voice list periodically
+  // Update voice list and instrument data periodically
   useEffect(() => {
-    const updateVoiceList = () => {
+    const updateData = () => {
       if (backgroundAudioManager) {
         const newVoiceList = backgroundAudioManager.getVoiceList();
         setVoiceList(newVoiceList);
@@ -30,14 +30,21 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
         
         const newChannelInstruments = backgroundAudioManager.getChannelInstruments();
         setChannelInstruments(newChannelInstruments);
+        
+        console.log('🎼 Updated background instruments data:', {
+          voiceListLength: newVoiceList.length,
+          mutedChannelsCount: newMutedChannels.size,
+          instrumentsCount: newChannelInstruments.size,
+          instruments: Array.from(newChannelInstruments.entries())
+        });
       }
     };
 
     // Update immediately
-    updateVoiceList();
+    updateData();
 
-    // Update every 100ms
-    const interval = setInterval(updateVoiceList, 100);
+    // Update every 100ms for real-time voice tracking
+    const interval = setInterval(updateData, 100);
 
     return () => clearInterval(interval);
   }, [backgroundAudioManager]);
@@ -45,7 +52,17 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
   const toggleMuteChannel = (channelNum: number) => {
     const isMuted = mutedChannels.has(channelNum);
     backgroundAudioManager.muteChannel(channelNum, !isMuted);
+    console.log(`🔇 Toggled mute for channel ${channelNum + 1}: ${!isMuted ? 'muted' : 'unmuted'}`);
   };
+
+  // Debug: Log current state
+  console.log('🎼 BackgroundInstrumentsPanel render:', {
+    hideSelectedChannel,
+    voiceListLength: voiceList.length,
+    channelInstrumentsSize: channelInstruments.size,
+    mutedChannelsSize: mutedChannels.size,
+    showOnlyUsedChannels
+  });
 
   return (
     <div className="space-y-6">
@@ -81,8 +98,22 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
         </p>
       </div>
 
-      {/* Voice List */}
-      {channelInstruments.size > 0 && (
+      {/* Debug Information */}
+      <div className="bg-gray-900/50 border border-gray-500/50 rounded-lg p-4">
+        <h3 className="text-gray-300 font-bold mb-2">🔍 Debug Information</h3>
+        <div className="text-gray-400 text-sm space-y-1">
+          <div>Voice List Length: {voiceList.length}</div>
+          <div>Channel Instruments: {channelInstruments.size}</div>
+          <div>Muted Channels: {mutedChannels.size}</div>
+          <div>Hidden Channel: {hideSelectedChannel !== undefined ? hideSelectedChannel + 1 : 'None'}</div>
+          <div>Available Instruments: {Array.from(channelInstruments.entries()).map(([ch, prog]) => 
+            `Ch${ch + 1}:${prog}`
+          ).join(', ') || 'None detected'}</div>
+        </div>
+      </div>
+
+      {/* Instruments List */}
+      {channelInstruments.size > 0 ? (
         <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20" style={{ maxHeight: 520, minHeight: 320, overflowY: 'auto' }}>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-white flex items-center space-x-2">
@@ -235,6 +266,17 @@ export const BackgroundInstrumentsPanel: React.FC<BackgroundInstrumentsPanelProp
                 <> • Hidden: Channel {hideSelectedChannel + 1} (Your Instrument)</>
               )}
             </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 border border-white/20 text-center">
+          <Piano className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-white font-bold mb-2">No Instruments Detected</h3>
+          <p className="text-white/60 text-sm">
+            The MIDI file may not have loaded yet, or it may not contain instrument information.
+          </p>
+          <div className="mt-4 text-xs text-gray-400">
+            Debug: Voice list length = {voiceList.length}, Channel instruments = {channelInstruments.size}
           </div>
         </div>
       )}

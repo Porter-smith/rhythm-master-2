@@ -18,6 +18,7 @@ export class BackgroundAudioManager {
   private isPlaying = false;
   private mutedChannels = new Set<number>();
   private hasStartedOnce = false; // Track if we've started playback at least once
+  private channelInstruments = new Map<number, number>(); // Track channel -> instrument mapping
 
   async initialize(soundFontUrl: string): Promise<void> {
     try {
@@ -56,6 +57,10 @@ export class BackgroundAudioManager {
 
     try {
       console.log('🎼 Loading MIDI for background audio...');
+      
+      // Parse MIDI to extract instrument information BEFORE loading into sequencer
+      await this.parseMidiInstruments(midiFile);
+      
       const midi = new MIDI(midiFile);
       this.sequencer.loadNewSongList([midi]);
       
@@ -65,9 +70,106 @@ export class BackgroundAudioManager {
       this.hasStartedOnce = false;
       
       console.log('✅ MIDI loaded for background audio (paused, waiting for game start)');
+      console.log('🎹 Detected instruments:', Array.from(this.channelInstruments.entries()).map(([ch, prog]) => 
+        `Channel ${ch + 1}: Program ${prog}`
+      ));
     } catch (error) {
       console.error('❌ Failed to load MIDI for background audio:', error);
       throw error;
+    }
+  }
+
+  private async parseMidiInstruments(midiFile: ArrayBuffer): Promise<void> {
+    try {
+      const data = new Uint8Array(midiFile);
+      let pos = 0;
+
+      // Helper functions for reading binary data
+      const read32 = (): number => (data[pos++] << 24) | (data[pos++] << 16) | (data[pos++] << 8) | data[pos++];
+      const read16 = (): number => (data[pos++] << 8) | data[pos++];
+      const read8 = (): number => data[pos++];
+      const readVarLength = (): number => {
+        let value = 0;
+        let byte: number;
+        do {
+          byte = read8();
+          value = (value << 7) | (byte & 0x7F);
+        } while (byte & 0x80);
+        return value;
+      };
+
+      // Validate MIDI header
+      if (data[0] !== 77 || data[1] !== 84 || data[2] !== 104 || data[3] !== 100) {
+        throw new Error('Invalid MIDI file header');
+      }
+      pos = 4;
+
+      // Read header chunk
+      read32(); // Skip header length
+      read16(); // Skip format
+      const trackCount = read16();
+      read16(); // Skip ticks per quarter
+
+      this.channelInstruments.clear();
+
+      // Process each track to find program changes
+      for (let trackIndex = 0; trackIndex < trackCount; trackIndex++) {
+        // Validate track header
+        if (data[pos++] !== 77 || data[pos++] !== 84 || data[pos++] !== 114 || data[pos++] !== 107) {
+          continue;
+        }
+
+        const trackLength = read32();
+        const trackEnd = pos + trackLength;
+        let runningStatus = 0;
+
+        // Process track events
+        while (pos < trackEnd) {
+          const deltaTime = readVarLength();
+          
+          let command = read8();
+          if (command < 0x80) {
+            pos--;
+            command = runningStatus;
+          } else {
+            runningStatus = command;
+          }
+
+          const messageType = command & 0xF0;
+          const channel = command & 0x0F;
+
+          if (messageType === 0xC0) {
+            // Program Change (instrument selection)
+            const instrument = read8();
+            this.channelInstruments.set(channel, instrument);
+            console.log(`🎹 Found instrument: Channel ${channel + 1} = Program ${instrument}`);
+          } else if (command === 0xFF) {
+            // Meta event
+            const metaType = read8();
+            const metaLength = readVarLength();
+            pos += metaLength;
+          } else if (messageType === 0x90 || messageType === 0x80) {
+            // Note On/Off (2 bytes)
+            read8();
+            read8();
+          } else if (messageType === 0xA0 || messageType === 0xB0 || messageType === 0xE0) {
+            // Aftertouch, Control Change, Pitch Bend (2 bytes)
+            read8();
+            read8();
+          } else if (messageType === 0xD0) {
+            // Channel Pressure (1 byte)
+            read8();
+          } else if (command >= 0xF0) {
+            // System exclusive
+            const sysexLength = readVarLength();
+            pos += sysexLength;
+          }
+        }
+      }
+
+      console.log(`🎼 Parsed ${this.channelInstruments.size} instruments from MIDI`);
+    } catch (error) {
+      console.error('❌ Error parsing MIDI instruments:', error);
     }
   }
 
@@ -130,9 +232,7 @@ export class BackgroundAudioManager {
   }
 
   getChannelInstruments(): Map<number, number> {
-    // This would need to be implemented by parsing the MIDI file
-    // For now, return empty map
-    return new Map();
+    return new Map(this.channelInstruments);
   }
 
   getVoiceList(): string[] {
@@ -140,7 +240,16 @@ export class BackgroundAudioManager {
 
     const voiceList: string[] = [];
     for (let i = 0; i < 16; i++) {
-      let text = `Channel ${i + 1}:\nUnknown\n`;
+      const instrument = this.channelInstruments.get(i);
+      let text = `Channel ${i + 1}:\n`;
+      
+      if (instrument !== undefined) {
+        // Get instrument name from GM standard
+        const instrumentName = this.getInstrumentName(instrument, i);
+        text += `${instrumentName}\n`;
+      } else {
+        text += `Unknown\n`;
+      }
       
       if (this.synth.midiAudioChannels[i]) {
         this.synth.midiAudioChannels[i].voices.forEach(v => {
@@ -152,6 +261,51 @@ export class BackgroundAudioManager {
     }
     
     return voiceList;
+  }
+
+  private getInstrumentName(program: number, channel: number): string {
+    // GM instrument names
+    const gmInstruments = [
+      "Acoustic Grand Piano", "Bright Acoustic Piano", "Electric Grand Piano", "Honky-tonk Piano",
+      "Electric Piano 1", "Electric Piano 2", "Harpsichord", "Clavi",
+      "Celesta", "Glockenspiel", "Music Box", "Vibraphone",
+      "Marimba", "Xylophone", "Tubular Bells", "Dulcimer",
+      "Drawbar Organ", "Percussive Organ", "Rock Organ", "Church Organ",
+      "Reed Organ", "Accordion", "Harmonica", "Tango Accordion",
+      "Acoustic Guitar (nylon)", "Acoustic Guitar (steel)", "Electric Guitar (jazz)", "Electric Guitar (clean)",
+      "Electric Guitar (muted)", "Overdriven Guitar", "Distortion Guitar", "Guitar Harmonics",
+      "Acoustic Bass", "Electric Bass (finger)", "Electric Bass (pick)", "Fretless Bass",
+      "Slap Bass 1", "Slap Bass 2", "Synth Bass 1", "Synth Bass 2",
+      "Violin", "Viola", "Cello", "Contrabass",
+      "Tremolo Strings", "Pizzicato Strings", "Orchestral Harp", "Timpani",
+      "String Ensemble 1", "String Ensemble 2", "Synth Strings 1", "Synth Strings 2",
+      "Choir Aahs", "Voice Oohs", "Synth Voice", "Orchestra Hit",
+      "Trumpet", "Trombone", "Tuba", "Muted Trumpet",
+      "French Horn", "Brass Section", "Synth Brass 1", "Synth Brass 2",
+      "Soprano Sax", "Alto Sax", "Tenor Sax", "Baritone Sax",
+      "Oboe", "English Horn", "Bassoon", "Clarinet",
+      "Piccolo", "Flute", "Recorder", "Pan Flute",
+      "Blown Bottle", "Shakuhachi", "Whistle", "Ocarina",
+      "Lead 1 (square)", "Lead 2 (sawtooth)", "Lead 3 (calliope)", "Lead 4 (chiff)",
+      "Lead 5 (charang)", "Lead 6 (voice)", "Lead 7 (fifths)", "Lead 8 (bass + lead)",
+      "Pad 1 (new age)", "Pad 2 (warm)", "Pad 3 (polysynth)", "Pad 4 (choir)",
+      "Pad 5 (bowed)", "Pad 6 (metallic)", "Pad 7 (halo)", "Pad 8 (sweep)",
+      "FX 1 (rain)", "FX 2 (soundtrack)", "FX 3 (crystal)", "FX 4 (atmosphere)",
+      "FX 5 (brightness)", "FX 6 (goblins)", "FX 7 (echoes)", "FX 8 (sci-fi)",
+      "Sitar", "Banjo", "Shamisen", "Koto",
+      "Kalimba", "Bagpipe", "Fiddle", "Shanai",
+      "Tinkle Bell", "Agogo", "Steel Drums", "Woodblock",
+      "Taiko Drum", "Melodic Tom", "Synth Drum", "Reverse Cymbal",
+      "Guitar Fret Noise", "Breath Noise", "Seashore", "Bird Tweet",
+      "Telephone Ring", "Helicopter", "Applause", "Gunshot"
+    ];
+
+    // Special handling for Channel 10 (drums)
+    if (channel === 9) {
+      return "Drum Kit";
+    }
+
+    return gmInstruments[program] || `Unknown Instrument (${program})`;
   }
 
   isCurrentlyPlaying(): boolean {
