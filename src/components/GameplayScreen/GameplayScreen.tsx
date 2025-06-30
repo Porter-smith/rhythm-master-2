@@ -925,50 +925,23 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
   // Updated note positioning function (matching POC)
   const noteToY = (note: number, isTreble: boolean): number => {
-    const TREBLE_NOTES: { [key: number]: string } = {
-      60: 'C4', 61: 'C#4', 62: 'D4', 63: 'D#4', 64: 'E4', 65: 'F4',
-      66: 'F#4', 67: 'G4', 68: 'G#4', 69: 'A4', 70: 'A#4', 71: 'B4',
-      72: 'C5', 73: 'C#5', 74: 'D5', 75: 'D#5', 76: 'E5', 77: 'F5',
-      78: 'F#5', 79: 'G5', 80: 'G#5', 81: 'A5', 82: 'A#5', 83: 'B5', 84: 'C6'
-    };
-
-    const BASS_NOTES: { [key: number]: string } = {
-      36: 'C2', 37: 'C#2', 38: 'D2', 39: 'D#2', 40: 'E2', 41: 'F2',
-      42: 'F#2', 43: 'G2', 44: 'G#2', 45: 'A2', 46: 'A#2', 47: 'B2',
-      48: 'C3', 49: 'C#3', 50: 'D3', 51: 'D#3', 52: 'E3', 53: 'F3',
-      54: 'F#3', 55: 'G3', 56: 'G#3', 57: 'A3', 58: 'A#3', 59: 'B3'
-    };
-
+    // Each note takes up half a line space
+    // C4 is middle C, positioned on the first ledger line below treble staff
+    const middleC = 60; // MIDI note number for C4
+    const stepsFromMiddleC = (note - middleC) * 0.5; // Each semitone is half a step
+    
     const STAFF_HEIGHT = 200;
     const STAFF_TOP_MARGIN = 100;
     const LINE_SPACING = STAFF_HEIGHT / 6;
-
+    
     if (isTreble) {
-      const noteName = TREBLE_NOTES[note] || 'E4';
-      const baseNote = 'E4';
-      const staffBottom = STAFF_TOP_MARGIN + 4 * LINE_SPACING;
-      
-      const noteLetter = noteName[0];
-      const noteOctave = parseInt(noteName.slice(-1));
-      const baseOctave = parseInt(baseNote.slice(-1));
-      
-      const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-      const semitones = (noteOrder.indexOf(noteLetter) - noteOrder.indexOf(baseNote[0])) + (noteOctave - baseOctave) * 7;
-      
-      return staffBottom - semitones * (LINE_SPACING / 2);
+      // Position relative to middle C (first ledger line below treble staff)
+      const middleCY = STAFF_TOP_MARGIN + 6 * LINE_SPACING; // One line below treble staff
+      return middleCY - (stepsFromMiddleC * LINE_SPACING);
     } else {
-      const noteName = BASS_NOTES[note] || 'G2';
-      const baseNote = 'G2';
-      const staffBottom = STAFF_TOP_MARGIN + STAFF_HEIGHT + 4 * LINE_SPACING;
-      
-      const noteLetter = noteName[0];
-      const noteOctave = parseInt(noteName.slice(-1));
-      const baseOctave = parseInt(baseNote.slice(-1));
-      
-      const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-      const semitones = (noteOrder.indexOf(noteLetter) - noteOrder.indexOf(baseNote[0])) + (noteOctave - baseOctave) * 7;
-      
-      return staffBottom - semitones * (LINE_SPACING / 2);
+      // For bass clef, we position relative to middle C as well
+      const middleCY = STAFF_TOP_MARGIN + STAFF_HEIGHT - 6 * LINE_SPACING; // Third space above bass staff
+      return middleCY - (stepsFromMiddleC * LINE_SPACING);
     }
   };
 
