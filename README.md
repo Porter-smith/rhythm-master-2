@@ -1,5 +1,7 @@
+## Demo Video
+[![Rhythm Master 2 Demo](https://img.youtube.com/vi/FLB71foJSgk/maxresdefault.jpg)](https://www.youtube.com/shorts/FLB71foJSgk)
+> Click the image above to watch the demo!
 
-[![Video Title](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/shorts/VIDEO_ID)
 ## Inspiration
 I was inspired by games like osu!, rocksmith, rockband, and simplypiano.
 
